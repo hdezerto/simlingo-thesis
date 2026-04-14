@@ -23,6 +23,7 @@ def get_num_jobs(job_name, username):
     return num_running_jobs, max_num_parallel_jobs
 
 # %%
+
 def bash_file_bench2drive(job, port, tm_port, partition_name):
     cfg = job["cfg"]
     route = job["route"]
@@ -33,37 +34,45 @@ def bash_file_bench2drive(job, port, tm_port, partition_name):
     log_file = job["log_file"]
     err_file = job["err_file"]
     job_file = job["job_file"]
+    account_line = f"#SBATCH --account={cfg['slurm_account']}\n" if cfg.get("slurm_account") else ""
 
     with open(job_file, 'w', encoding='utf-8') as rsh:
             rsh.write(f'''#!/bin/bash
 #SBATCH --job-name={cfg["agent"]}_{seed}_{cfg["benchmark"]}_{route_id}
 #SBATCH --partition={partition_name}
-#SBATCH -o {log_file}
+{account_line}#SBATCH -o {log_file}
 #SBATCH -e {err_file}
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=40gb
-#SBATCH --time=3-00:00
+#SBATCH --time=12:00:00       # EDITED for Berzelius
 #SBATCH --gres=gpu:1
 
 echo JOB ID $SLURM_JOB_ID
 
-source ~/.bashrc
-. ~/software/anaconda3/etc/profile.d/conda.sh # idk why i need to do this, bashrc should be enough
-conda activate simlingo # TODO: change to your conda env
-cd {cfg["repo_root"]}
+module load Miniforge3/24.7.1-2-hpc1-bdist
+conda activate simlingo
+source env.sh
 
+cd {cfg["repo_root"]}
 
 export CARLA_ROOT={cfg["carla_root"]}
 export PYTHONPATH=$PYTHONPATH:{cfg["carla_root"]}/PythonAPI/carla
 export PYTHONPATH=$PYTHONPATH:{cfg["carla_root"]}/PythonAPI/carla/dist/carla-0.9.15-py3.7-linux-x86_64.egg
-export PYTHONPATH=$PYTHONPATH:{cfg["repo_root"]}/Bench2Drive/leaderboard
-export PYTHONPATH=$PYTHONPATH:{cfg["repo_root"]}/Bench2Drive/scenario_runner
-export SCENARIO_RUNNER_ROOT={cfg["repo_root"]}/Bench2Drive/scenario_runner
 
+# --- EDITED for Berzelius: Repo Root first, then Bench2Drive ---
+export PYTHONPATH={cfg["repo_root"]}:{cfg["repo_root"]}/Bench2Drive/leaderboard:{cfg["repo_root"]}/Bench2Drive/scenario_runner:$PYTHONPATH
+export SCENARIO_RUNNER_ROOT={cfg["repo_root"]}/Bench2Drive/scenario_runner
 export SAVE_PATH={viz_path}
 
+# --- EDITED for Berzelius: Thread-safe xdg-user-dir (Unique /tmp folder) ---
+mkdir -p /tmp/$SLURM_JOB_ID
+echo '#!/bin/bash' > /tmp/$SLURM_JOB_ID/xdg-user-dir
+echo 'echo /scratch/local' >> /tmp/$SLURM_JOB_ID/xdg-user-dir
+chmod +x /tmp/$SLURM_JOB_ID/xdg-user-dir
+export PATH=/tmp/$SLURM_JOB_ID:$PATH
+# -----------------------------------------------------------
 
 python -u {cfg["repo_root"]}/Bench2Drive/leaderboard/leaderboard/leaderboard_evaluator.py --routes={route} \
 --repetitions=1 \
@@ -76,6 +85,76 @@ python -u {cfg["repo_root"]}/Bench2Drive/leaderboard/leaderboard/leaderboard_eva
 --port={port} \
 --traffic-manager-port={tm_port}
 ''')
+
+
+# def bash_file_bench2drive(job, port, tm_port, partition_name):
+#     cfg = job["cfg"]
+#     route = job["route"]
+#     route_id = job["route_id"]
+#     seed = job["seed"]
+#     viz_path = job["viz_path"]
+#     result_file = job["result_file"]
+#     log_file = job["log_file"]
+#     err_file = job["err_file"]
+#     job_file = job["job_file"]
+
+#     with open(job_file, 'w', encoding='utf-8') as rsh:
+#             rsh.write(f'''#!/bin/bash
+# #SBATCH --job-name={cfg["agent"]}_{seed}_{cfg["benchmark"]}_{route_id}
+# #SBATCH --partition={partition_name}
+# #SBATCH -o {log_file}
+# #SBATCH -e {err_file}
+# #SBATCH --nodes=1
+# #SBATCH --ntasks=1
+# #SBATCH --cpus-per-task=8
+# #SBATCH --mem=40gb
+# #SBATCH --time=00:30:00       # EDITED for Berzelius
+# #SBATCH --gres=gpu:1
+
+# echo JOB ID $SLURM_JOB_ID
+
+# # --- EDITED for Berzelius ---
+# module load Miniforge3/24.7.1-2-hpc1-bdist
+# conda activate simlingo
+# source env.sh
+# # ------------------------------
+
+# cd {cfg["repo_root"]}
+
+
+# export CARLA_ROOT={cfg["carla_root"]}
+# export PYTHONPATH=$PYTHONPATH:{cfg["carla_root"]}/PythonAPI/carla
+# export PYTHONPATH=$PYTHONPATH:{cfg["carla_root"]}/PythonAPI/carla/dist/carla-0.9.15-py3.7-linux-x86_64.egg
+
+# # export PYTHONPATH=$PYTHONPATH:{cfg["repo_root"]}/Bench2Drive/leaderboard
+# # export PYTHONPATH=$PYTHONPATH:{cfg["repo_root"]}/Bench2Drive/scenario_runner
+# # --- EDITED for Berzelius: ADDED NEW FIX (Prepend paths) ---
+# export PYTHONPATH={cfg["repo_root"]}:{cfg["repo_root"]}/Bench2Drive/leaderboard:{cfg["repo_root"]}/Bench2Drive/scenario_runner:$PYTHONPATH
+# # --------------------------------------------------------
+
+# export SCENARIO_RUNNER_ROOT={cfg["repo_root"]}/Bench2Drive/scenario_runner
+
+# export SAVE_PATH={viz_path}
+
+# # --- EDITED for Berzelius: Create a fake xdg-user-dir to prevent crash ---
+# echo '#!/bin/bash' > xdg-user-dir
+# echo 'echo /scratch/local' >> xdg-user-dir
+# chmod +x xdg-user-dir
+# export PATH=$PWD:$PATH
+# # --------------------------------------------------------------------------
+
+
+# python -u {cfg["repo_root"]}/Bench2Drive/leaderboard/leaderboard/leaderboard_evaluator.py --routes={route} \
+# --repetitions=1 \
+# --track=SENSORS \
+# --checkpoint={result_file} \
+# --timeout=600 \
+# --agent={cfg["agent_file"]} \
+# --agent-config={cfg["checkpoint"]} \
+# --traffic-manager-seed={seed} \
+# --port={port} \
+# --traffic-manager-port={tm_port}
+# ''')
 
 
 # %%
@@ -168,23 +247,63 @@ def kill_dead_jobs(jobs):
 
             subprocess.Popen(f"scancel {job_id}", shell=True)
 
+# ------ EDITED for Berzelius ------- #
+# For Baseline evaluation on Bench2Drive
+_env = os.environ
+_repo_root = _env.get("REPO_DIR", os.path.abspath(os.path.dirname(__file__)))
+_base_dir = _env.get("BASE_DIR", os.path.dirname(_repo_root))
+_carla_root = _env.get("CARLA_ROOT", os.path.join(_base_dir, "carla", "CARLA_0.9.15"))
+_checkpoint = _env.get(
+    "MODEL_CKPT",
+    os.path.join(
+        _base_dir,
+        "checkpoints",
+        "simlingo_pretrained",
+        "simlingo",
+        "checkpoints",
+        "epoch=013.ckpt",
+        "pytorch_model.pt",
+    ),
+)
+
 configs = [
     {
-    "agent": "simlingo",
-    "checkpoint": "/PATH/TO/REPO/outputs/simlingo/checkpoints/epoch=013.ckpt/pytorch_model.pt",
-    "benchmark": "bench2drive",
-    "route_path": "/PATH/TO/REPO/leaderboard/data/bench2drive_split",
-    "seeds": [1,2,3], # TODO: change depending on how many eval seeds you wanna run (paper uses one eval seed on three train seeds)
-    "tries": 2,
-    "out_root": "/PATH/TO/REPO/eval_results/Bench2Drive",
-    "carla_root": "~/software/carla0915",
-    "repo_root": "/PATH/TO/REPO",
-    "agent_file": "/PATH/TO/REPO/team_code/agent_simlingo.py",
-    "team_code": "team_code",
-    "agent_config": "not_used",
-    "username": "YOUR_USERNAME"
+        "agent": "simlingo",
+        "checkpoint": _checkpoint,
+        "benchmark": "bench2drive",
+        "route_path": os.path.join(_repo_root, "leaderboard", "data", "bench2drive_split"),
+        "seeds": [1, 2, 3],
+        "tries": 2,
+        "out_root": os.path.join(_base_dir, "eval_results", "Bench2Drive"),
+        "carla_root": _carla_root,
+        "repo_root": _repo_root,
+        "agent_file": os.path.join(_repo_root, "team_code", "agent_simlingo.py"),
+        "team_code": "team_code",
+        "agent_config": "not_used",
+        "username": _env.get("USERNAME", _env.get("USER", "x_hugaf")),
+        "slurm_partition": _env.get("SLURM_PARTITION", "berzelius"),
+        "slurm_account": _env.get("SLURM_ACCOUNT", "")
     }
-    ] # TODO: change to your paths and model, you can add multiple configs here, whch get evaluated after each other
+]
+# -------------------------------------- #
+
+# configs = [
+#     {
+#     "agent": "simlingo",
+#     "checkpoint": "/PATH/TO/REPO/outputs/simlingo/checkpoints/epoch=013.ckpt/pytorch_model.pt",
+#     "benchmark": "bench2drive",
+#     "route_path": "/PATH/TO/REPO/leaderboard/data/bench2drive_split",
+#     "seeds": [1,2,3], # TODO: change depending on how many eval seeds you wanna run (paper uses one eval seed on three train seeds)
+#     "tries": 2,
+#     "out_root": "/PATH/TO/REPO/eval_results/Bench2Drive",
+#     "carla_root": "~/software/carla0915",
+#     "repo_root": "/PATH/TO/REPO",
+#     "agent_file": "/PATH/TO/REPO/team_code/agent_simlingo.py",
+#     "team_code": "team_code",
+#     "agent_config": "not_used",
+#     "username": "YOUR_USERNAME"
+#     }
+#     ] # TODO: change to your paths and model, you can add multiple configs here, whch get evaluated after each other
 
 
 # %%
@@ -243,7 +362,6 @@ carla_tm_ports = set(range(30000, 40000, 50))
 # %%
 jobs = len(job_queue)
 progress = tqdm(total = jobs)
-partition_name = "2080-galvani"
 while job_queue:
     kill_dead_jobs(job_queue)
     job_queue = filter_completed(job_queue)
@@ -284,9 +402,16 @@ while job_queue:
         carla_streaming_port_start = next(iter(carla_streaming_ports.difference(used_ports)))
         carla_tm_port_start = next(iter(carla_tm_ports.difference(used_ports)))
 
+        # EDITED for Berzelius: Corrected port order
         if job["cfg"]["benchmark"].lower() == "bench2drive":
-            bash_file_bench2drive(job, carla_tm_port_start, carla_world_port_start, partition_name)
+            # CORRECTED: World Port first, then TM Port
+            partition_name = job["cfg"].get("slurm_partition", "berzelius")
+            bash_file_bench2drive(job, carla_world_port_start, carla_tm_port_start, partition_name)
             job["ports"] = {carla_world_port_start, carla_tm_port_start}
+
+        # if job["cfg"]["benchmark"].lower() == "bench2drive":
+        #     bash_file_bench2drive(job, carla_tm_port_start, carla_world_port_start, partition_name)
+        #     job["ports"] = {carla_world_port_start, carla_tm_port_start}
         else:
             raise NotImplementedError(f"Benchmark {job['cfg']['benchmark']} not implemented.")
 
