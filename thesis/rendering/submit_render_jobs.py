@@ -179,7 +179,7 @@ set +u
 conda activate simlingo
 set -u
 export PYTHONPATH=${{PYTHONPATH:-}}
-source env.sh
+source thesis/env.sh
 log "Environment initialized"
 
 export CARLA_ROOT={cfg["carla_root"]}
@@ -317,7 +317,7 @@ fi
 
 if [[ "$DEBUG_VIZ" -eq 1 ]]; then
   log "Starting frame-stitch rendering"
-  python -u {cfg["repo_root"]}/thesis_new_files/generate_video_from_frames.py \
+  python -u {cfg["repo_root"]}/thesis/rendering/generate_video_from_frames.py \
     --images-folder "$FRAME_DIR" \
     --output-video "$MP4_OUT" \
     --sim-fps {float(cfg["fps"])}
@@ -333,7 +333,11 @@ fi
 
 def main():
     parser = argparse.ArgumentParser(description="Submit multi-case route render jobs from a manifest.")
-    parser.add_argument("--manifest", default="thesis_new_files/render_manifest.json")
+    parser.add_argument(
+        "--manifest",
+        default="thesis/rendering/manifests/render_manifest_template.json",
+        help="Path to a render manifest JSON file.",
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 

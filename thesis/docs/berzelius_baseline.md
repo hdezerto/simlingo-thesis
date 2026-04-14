@@ -1,4 +1,4 @@
-# SimLingo Berzelius Baseline
+# SimLingo Baseline on Berzelius
 
 ## Thesis Information
 
@@ -21,6 +21,10 @@
 ---
 
 This guide reproduces the SimLingo baseline on Berzelius with CARLA 0.9.15 and Bench2Drive.
+
+Context:
+- The original upstream project documentation remains at repository root in `README_UPSTREAM.md`.
+- This guide documents the Berzelius-specific baseline branch layout and workflow.
 
 Important scope:
 - The repository contains code only.
@@ -56,12 +60,12 @@ Run once per shell before following commands in this README:
 ```bash
 export USERNAME="${USERNAME:-${USER:-<your-liu-id>}}"
 cd /proj/berzelius-2023-154/users/${USERNAME}/simlingo-thesis
-source env.sh
+source thesis/env.sh
 ```
 
 Note:
-- `env.sh` is intentionally at repo root because run scripts and Slurm jobs source it from there.
-- `thesis_new_files/` stores thesis-specific scripts/docs, while `env.sh` configures the whole repository runtime.
+- Thesis-specific additions are grouped under `thesis/`.
+- `thesis/env.sh` configures the repository runtime used by the Berzelius workflow.
 
 Quick preflight checks:
 
@@ -200,7 +204,7 @@ ls -lh ${MODEL_CKPT}
 From `simlingo-thesis/`:
 
 ```bash
-source env.sh
+source thesis/env.sh
 ```
 
 Quick checks:
@@ -224,7 +228,7 @@ Submit smoke test:
 
 ```bash
 cd ${BASE_DIR}/simlingo-thesis
-sbatch carla_test.slurm
+sbatch thesis/slurm/carla_test.slurm
 squeue -u "$USERNAME"
 ```
 
@@ -270,7 +274,7 @@ Inside tmux:
 # 1. Load Environment
 module load Miniforge3/24.7.1-2-hpc1-bdist
 conda activate simlingo
-source env.sh
+source thesis/env.sh
 
 # 2. Set Parallelism (Limit to 8 concurrent jobs = 1 full node)
 echo "8" > max_num_jobs.txt
@@ -315,12 +319,22 @@ After queue is empty and all jobs are done:
 
 First, merge and summarize the results for each seed:
 ```bash
-python thesis_new_files/new_merge_route_json.py -b ${BENCH2DRIVE_ROOT}
+python thesis/analysis/merge_bench2drive_results.py -b ${BENCH2DRIVE_ROOT}
 ```
 
 Then, run the scenario failure analysis to generate tables of systematic and hardest scenario failures:
 ```bash
-python thesis_new_files/analyze_scenario_failures.py -b ${BENCH2DRIVE_ROOT}
+python thesis/analysis/analyze_scenario_failures.py -b ${BENCH2DRIVE_ROOT}
+```
+
+By default, the generated report is written to:
+```bash
+thesis/reports/scenario_failure_report.txt
+```
+
+A sample report artifact is kept in:
+```bash
+thesis/reports/scenario_failure_report_example.txt
 ```
 
 To inspect a specific benchmark run result, change the run index (e.g., `000`) as needed:
@@ -338,10 +352,15 @@ To render a list of selected route/seed cases, use the manifest-driven pipeline.
 
 ### 10.1 Edit the case list
 
-Update:
+Start from the template manifest:
 ```bash
-thesis_new_files/render_manifest.json
+thesis/rendering/manifests/render_manifest_template.json
 ```
+
+You can also inspect the committed example manifests:
+
+- `thesis/rendering/manifests/render_manifest_1.json`
+- `thesis/rendering/manifests/render_manifest_2.json`
 
 Add all relevant route/seed pairs under `cases`.
 
@@ -387,19 +406,19 @@ Example with debug rendering enabled:
 cd ${BASE_DIR}/simlingo-thesis
 module load Miniforge3/24.7.1-2-hpc1-bdist
 conda activate simlingo
-source env.sh
+source thesis/env.sh
 ```
 
 ### 10.3 (Optional) Dry-run job generation
 
 ```bash
-python thesis_new_files/submit_render_jobs.py --manifest thesis_new_files/render_manifest.json --dry-run
+python thesis/rendering/submit_render_jobs.py --manifest thesis/rendering/manifests/render_manifest_template.json --dry-run
 ```
 
 ### 10.4 Submit all render jobs
 
 ```bash
-python thesis_new_files/submit_render_jobs.py --manifest thesis_new_files/render_manifest.json
+python thesis/rendering/submit_render_jobs.py --manifest thesis/rendering/manifests/render_manifest_template.json
 ```
 
 ### Current execution behavior
@@ -410,7 +429,7 @@ python thesis_new_files/submit_render_jobs.py --manifest thesis_new_files/render
     3) stitch MP4 from those frames.
 - If `debug_viz=false`: the job still runs evaluation, but skips frame generation and MP4 stitching (metrics-only mode).
 - If `debug_viz=true`: the job generates debug-overlay frames and stitches MP4.
-- Stitching FPS is auto-inferred from frame index spacing in `generate_video_from_frames.py` (with `--sim-fps` from manifest `defaults.fps`).
+- Stitching FPS is auto-inferred from frame index spacing in `thesis/rendering/generate_video_from_frames.py` (with `--sim-fps` from manifest `defaults.fps`).
 
 
 ### 10.5 Monitor
@@ -466,16 +485,6 @@ cat ${BASE_DIR}/eval_results/Bench2Drive/simlingo/bench2drive/1/err/render_route
 
 * **Empty folders under `viz/` with run numbers (`000`, `001`, ...):**
     These are placeholder folders from the evaluator-style save path convention (run index based). For manifest rendering, actual artifacts are written into route-named paths (for example, `viz/2201/RouteScenario_.../debug_viz/...`) and frame/video outputs are under `frames/` and `recordings/`. Empty numeric `viz` folders are safe to ignore or delete.
-
-    Preview empty numeric folders:
-    ```bash
-    python thesis_new_files/cleanup_empty_viz_dirs.py --viz-root ${BASE_DIR}/eval_results/Bench2Drive/simlingo/bench2drive/1/viz
-    ```
-
-    Delete them:
-    ```bash
-    python thesis_new_files/cleanup_empty_viz_dirs.py --viz-root ${BASE_DIR}/eval_results/Bench2Drive/simlingo/bench2drive/1/viz --apply
-    ```
 
 * **Delete All Results (if needed):** Destructive and irreversible. Only run this if you explicitly want to remove all evaluation outputs and start fresh:
 ```bash

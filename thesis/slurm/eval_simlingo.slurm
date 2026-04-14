@@ -13,7 +13,6 @@
 
 module load Miniforge3/24.7.1-2-hpc1-bdist
 conda activate simlingo
-source env.sh
+source thesis/env.sh
 
 python start_eval_simlingo.py
-

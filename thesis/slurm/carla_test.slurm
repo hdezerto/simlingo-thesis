@@ -9,8 +9,7 @@
 
 module load Miniforge3/24.7.1-2-hpc1-bdist
 conda activate simlingo
-source env.sh
+source thesis/env.sh
 
 cd "$CARLA_ROOT"
 ./CarlaUE4.sh -RenderOffScreen -nosound
-

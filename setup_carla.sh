@@ -2,7 +2,7 @@
 # mkdir ~/software/carla0915
 # cd ~/software/carla0915
 
-source env.sh
+source thesis/env.sh
 
 CARLA_BASE="${BASE_DIR}/carla"
 mkdir -p "$CARLA_ROOT"

@@ -171,10 +171,18 @@ def analyze_multiseed(base_folder):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-b', '--base_folder', required=True, help="Path to 'bench2drive' folder containing 1, 2, 3")
-    parser.add_argument('-o', '--output_file', default=None, help="Path to save the exact same printed report")
+    parser.add_argument(
+        '-o',
+        '--output_file',
+        default=None,
+        help="Path to save the exact same printed report. Defaults to thesis/reports/scenario_failure_report.txt.",
+    )
     args = parser.parse_args()
     if os.path.isdir(args.base_folder):
-        output_file = args.output_file or os.path.join(os.path.dirname(__file__), 'scenario_failure_report.txt')
+        thesis_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        reports_dir = os.path.join(thesis_root, 'reports')
+        os.makedirs(reports_dir, exist_ok=True)
+        output_file = args.output_file or os.path.join(reports_dir, 'scenario_failure_report.txt')
         with open(output_file, 'w', encoding='utf-8') as f:
             with redirect_stdout(_Tee(sys.stdout, f)):
                 analyze_multiseed(args.base_folder)

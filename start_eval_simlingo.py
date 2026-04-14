@@ -53,7 +53,7 @@ echo JOB ID $SLURM_JOB_ID
 
 module load Miniforge3/24.7.1-2-hpc1-bdist
 conda activate simlingo
-source env.sh
+source thesis/env.sh
 
 cd {cfg["repo_root"]}
 
@@ -116,7 +116,7 @@ python -u {cfg["repo_root"]}/Bench2Drive/leaderboard/leaderboard/leaderboard_eva
 # # --- EDITED for Berzelius ---
 # module load Miniforge3/24.7.1-2-hpc1-bdist
 # conda activate simlingo
-# source env.sh
+# source thesis/env.sh
 # # ------------------------------
 
 # cd {cfg["repo_root"]}
