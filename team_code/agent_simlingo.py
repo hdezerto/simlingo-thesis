@@ -61,6 +61,18 @@ def get_entry_point():
 DEBUG = False # saves images during evaluation
 HD_VIZ = False
 USE_UKF = True
+ANALYSIS_VIEW_SPECS = {
+    'left': -90.0,
+    'right': 90.0,
+    'rear': 180.0,
+}
+
+
+def _env_flag(name, default=False):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 class LingoAgent(autonomous_agent.AutonomousAgent):
     """
@@ -231,9 +243,25 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
         self.save_path_metric = self.debug_save_path + '/metric'
         Path(self.save_path_metric).mkdir(parents=True, exist_ok=True)
 
-        if DEBUG:
+        self.debug_viz = _env_flag('DEBUG_VIZ', DEBUG)
+        self.debug_stride = max(1, int(os.environ.get('DEBUG_STRIDE', '5')))
+        self.debug_save_language = _env_flag('DEBUG_SAVE_LANGUAGE', True)
+
+        if self.debug_viz:
             self.save_path_img = self.debug_save_path + '/images'
             Path(self.save_path_img).mkdir(parents=True, exist_ok=True)
+
+        frame_render_dir = os.environ.get('FRAME_RENDER_DIR')
+        self.frame_render_dir = Path(frame_render_dir) if frame_render_dir else None
+        self.render_multiview = _env_flag('RENDER_MULTIVIEW', self.frame_render_dir is not None)
+        self.analysis_view_sensor_ids = {
+            view_name: f'rgb_{view_name}' for view_name in ANALYSIS_VIEW_SPECS
+        }
+        if self.frame_render_dir is not None:
+            (self.frame_render_dir / 'rgb_front').mkdir(parents=True, exist_ok=True)
+            for view_name in ANALYSIS_VIEW_SPECS:
+                (self.frame_render_dir / f'rgb_{view_name}').mkdir(parents=True, exist_ok=True)
+            (self.frame_render_dir / 'meta').mkdir(parents=True, exist_ok=True)
             
     def input_thread(self):
         while self.running:
@@ -312,6 +340,30 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
                             'id': f'rgb_{num_cam}'
                     }
             ]
+
+        if self.render_multiview:
+            base_pos = self.config.camera_pos_0
+            base_rot = self.config.camera_rot_0
+            base_width = self.config.camera_width_0
+            base_height = self.config.camera_height_0
+            base_fov = self.config.camera_fov_0
+
+            for view_name, yaw_offset in ANALYSIS_VIEW_SPECS.items():
+                sensors += [
+                    {
+                        'type': 'sensor.camera.rgb',
+                        'x': base_pos[0],
+                        'y': base_pos[1],
+                        'z': base_pos[2],
+                        'roll': base_rot[0],
+                        'pitch': base_rot[1],
+                        'yaw': base_rot[2] + yaw_offset,
+                        'width': base_width,
+                        'height': base_height,
+                        'fov': base_fov,
+                        'id': self.analysis_view_sensor_ids[view_name],
+                    }
+                ]
 
         if HD_VIZ:
             sensors += [{
@@ -665,6 +717,42 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
 
         return result
 
+    def _save_frame_render_sample(self, input_data, speed_value, control):
+        if self.frame_render_dir is None:
+            return
+
+        rgb_key = f"rgb_{self.config.num_cameras[0]}"
+        if rgb_key not in input_data:
+            return
+
+        frame_bgr = input_data[rgb_key][1][:, :, :3]
+        frame_index = max(self.step, 0)
+        frame_path = self.frame_render_dir / 'rgb_front' / f'{frame_index:05}.jpg'
+        meta_path = self.frame_render_dir / 'meta' / f'{frame_index:05}.json'
+
+        cv2.imwrite(str(frame_path), frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 90])
+        meta = {
+            'speed': float(speed_value),
+            'steer': float(control.steer),
+            'throttle': float(control.throttle),
+            'brake': float(control.brake),
+        }
+        with meta_path.open('w', encoding='utf-8') as f:
+            json.dump(meta, f)
+
+        self._save_additional_view_frames(input_data, frame_index)
+
+    def _save_additional_view_frames(self, input_data, frame_index):
+        if self.frame_render_dir is None:
+            return
+
+        for view_name, sensor_id in self.analysis_view_sensor_ids.items():
+            if sensor_id not in input_data:
+                continue
+            view_bgr = input_data[sensor_id][1][:, :, :3]
+            view_path = self.frame_render_dir / f'rgb_{view_name}' / f'{frame_index:05}.jpg'
+            cv2.imwrite(str(view_path), view_bgr, [cv2.IMWRITE_JPEG_QUALITY, 90])
+
     @torch.no_grad()
     def run_step(self, input_data, timestamp, sensors=None):  # pylint: disable=locally-disabled, unused-argument
         self.step += 1
@@ -674,6 +762,8 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
             control = carla.VehicleControl(steer=0.0, throttle=0.0, brake=1.0)
             self.control = control
             tick_data = self.tick(input_data)
+            if (not self.debug_viz) and (self.frame_render_dir is not None):
+                self._save_frame_render_sample(input_data, tick_data['speed'], control)
             return control
 
         # Need to run this every step for GPS filtering
@@ -688,7 +778,8 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
         # prepare velocity input
         gt_velocity = tick_data['speed']
 
-        if DEBUG and self.step%5 == 0:
+        debug_image_for_frame = None
+        if self.debug_viz and self.step % self.debug_stride == 0:
             tvec = None
             rvec = None
 
@@ -727,7 +818,7 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
                 for points_2d in pred_speed_wps_img_coords:
                         draw.ellipse((points_2d[0]-2, points_2d[1]-2, points_2d[0]+2, points_2d[1]+2), fill=(0, 255, 0, 255))
 
-            if language is not None:
+            if self.debug_save_language and language is not None:
                 # write the language to the bottom of the image
                 black_box = Image.new('RGBA', (W, 400), (0, 0, 0, 255))
                 # concatenate the images
@@ -759,8 +850,10 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
                 for idx, line in enumerate(lines):
                         draw.text((10, y_start + y_dist*(idx)), line, font=font, fill=(255, 255, 255, 255))
 
-            # save
-            image.save(f"{self.save_path_img}/{self.step}.png")
+            if self.frame_render_dir is not None:
+                debug_image_for_frame = image.convert('RGB')
+            else:
+                image.save(f"{self.save_path_img}/{self.step}.png")
             
         steer, throttle, brake = self.control_pid(pred_route, gt_velocity, pred_speed_wps)
 
@@ -796,6 +889,26 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
                 outfile = open(f"{self.save_path_metric}/metric_info.json", 'w')
                 json.dump(self.metric_info, outfile, indent=4)
                 outfile.close()
+
+        if self.debug_viz and self.frame_render_dir is not None:
+            if debug_image_for_frame is not None:
+                frame_index = max(self.step, 0)
+                frame_path = self.frame_render_dir / 'rgb_front' / f'{frame_index:05}.jpg'
+                meta_path = self.frame_render_dir / 'meta' / f'{frame_index:05}.json'
+
+                debug_bgr = cv2.cvtColor(np.array(debug_image_for_frame), cv2.COLOR_RGB2BGR)
+                cv2.imwrite(str(frame_path), debug_bgr, [cv2.IMWRITE_JPEG_QUALITY, 90])
+                meta = {
+                    'speed': float(gt_velocity),
+                    'steer': float(control.steer),
+                    'throttle': float(control.throttle),
+                    'brake': float(control.brake),
+                }
+                with meta_path.open('w', encoding='utf-8') as f:
+                    json.dump(meta, f)
+                self._save_additional_view_frames(input_data, frame_index)
+        elif self.frame_render_dir is not None:
+            self._save_frame_render_sample(input_data, gt_velocity, control)
 
         return control
 
