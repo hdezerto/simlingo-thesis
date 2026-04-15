@@ -1,30 +1,12 @@
 # SimLingo Baseline on Berzelius
 
-## Thesis Information
-
-| Field | Value |
-| --- | --- |
-| Thesis title | [pending update] |
-| Author | Hugo Afonso Dezerto |
-| Degree programme | Master's Programme in Systems, Control and Robotics |
-| Degree level | MSc Thesis |
-| Institution | KTH Royal Institute of Technology |
-| Department | EECS |
-| KTH Supervisor | Truls Nyberg |
-| External Supervisors (TRATON) | Truls Nyberg (truls.nyberg@scania.com); Carol Yi Yang (carol-yi.yang@scania.com); Jesper Eriksson (jesper.x.eriksson@scania.com) |
-| Examiner | Olov Andersson (EECS) |
-| Keywords | [update] |
-| Contact | hugoad@kth.se |
-| Academic year / term | 2026 |
-| Last updated | 2026-03-22 |
-
----
-
 This guide reproduces the SimLingo baseline on Berzelius with CARLA 0.9.15 and Bench2Drive.
 
 Context:
+- Thesis/project metadata is kept in the repository root `README.md`.
+- This document is the detailed operational guide for the `baseline` branch.
 - The original upstream project documentation remains at repository root in `README_UPSTREAM.md`.
-- This guide documents the Berzelius-specific baseline branch layout and workflow.
+- This guide documents the Berzelius-specific baseline workflow and layout.
 
 Important scope:
 - The repository contains code only.
@@ -32,7 +14,6 @@ Important scope:
 
 ## Index
 
-- [Thesis Information](#thesis-information)
 - [0. Set Variables (recommended)](#0-set-variables-recommended)
 - [1. Expected Layout](#1-expected-layout)
 - [2. Install CARLA 0.9.15](#2-install-carla-0915)
@@ -329,12 +310,12 @@ python thesis/analysis/analyze_scenario_failures.py -b ${BENCH2DRIVE_ROOT}
 
 By default, the generated report is written to:
 ```bash
-thesis/reports/scenario_failure_report.txt
+thesis/results/scenario_failure_report.txt
 ```
 
-A sample report artifact is kept in:
+The committed baseline report artifact is kept in:
 ```bash
-thesis/reports/scenario_failure_report_example.txt
+thesis/results/scenario_failure_report_baseline.txt
 ```
 
 To inspect a specific benchmark run result, change the run index (e.g., `000`) as needed:

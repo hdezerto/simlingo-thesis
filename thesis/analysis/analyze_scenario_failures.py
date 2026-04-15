@@ -175,14 +175,14 @@ if __name__ == "__main__":
         '-o',
         '--output_file',
         default=None,
-        help="Path to save the exact same printed report. Defaults to thesis/reports/scenario_failure_report.txt.",
+        help="Path to save the exact same printed report. Defaults to thesis/results/scenario_failure_report.txt.",
     )
     args = parser.parse_args()
     if os.path.isdir(args.base_folder):
         thesis_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-        reports_dir = os.path.join(thesis_root, 'reports')
-        os.makedirs(reports_dir, exist_ok=True)
-        output_file = args.output_file or os.path.join(reports_dir, 'scenario_failure_report.txt')
+        results_dir = os.path.join(thesis_root, 'results')
+        os.makedirs(results_dir, exist_ok=True)
+        output_file = args.output_file or os.path.join(results_dir, 'scenario_failure_report.txt')
         with open(output_file, 'w', encoding='utf-8') as f:
             with redirect_stdout(_Tee(sys.stdout, f)):
                 analyze_multiseed(args.base_folder)

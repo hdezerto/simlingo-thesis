@@ -2,6 +2,9 @@ viz
 database/
 pretrained/
 results/
+!thesis/results/
+thesis/results/*
+!thesis/results/scenario_failure_report_baseline.txt
 outputs/
 eval/
 eval_results/
