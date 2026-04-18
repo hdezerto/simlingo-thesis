@@ -38,12 +38,14 @@ Use this repository in two layers:
 Start here if you want to reproduce the baseline on Berzelius:
 
 - Detailed baseline guide: `thesis/berzelius_baseline.md`
+- Training setup guide: `thesis/berzelius_training.md`
 - Shared environment setup: `thesis/env.sh`
 - Evaluation orchestrator: `start_eval_simlingo.py`
 
 Thesis folder layout:
 
 - `thesis/berzelius_baseline.md`: Berzelius baseline documentation
+- `thesis/berzelius_training.md`: Berzelius training setup and smoke-test runbook
 - `thesis/analysis/`: result aggregation and failure-analysis utilities
 - `thesis/rendering/`: qualitative rendering pipeline and video stitching tools
 - `thesis/rendering/manifests/`: manifest files for multi-case rendering runs
