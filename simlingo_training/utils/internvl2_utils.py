@@ -91,7 +91,14 @@ def get_chat_tokens(tokenizer, prompts: List[str], user_start_token_str: str, as
     }
 
 
-def get_custom_chat_template(conversations: List[Dict], tokenizer, encoder_variant: str, num_image_tokens_total: int, cache_root_dir: str = 'pretrained') -> Optional[Dict]:
+def get_custom_chat_template(
+    conversations: List[Dict],
+    tokenizer,
+    encoder_variant: str,
+    num_image_tokens_total: int,
+    cache_root_dir: str = 'pretrained',
+    num_temporal_tokens: int = 0,
+) -> Optional[Dict]:
     # get the custom chat template
     # for full conversation, question only
     # https://huggingface.co/docs/transformers/main/en/chat_templating#can-i-use-chat-templates-in-training
@@ -103,6 +110,7 @@ def get_custom_chat_template(conversations: List[Dict], tokenizer, encoder_varia
     IMG_START_TOKEN='<img>'
     IMG_END_TOKEN='</img>'
     IMG_CONTEXT_TOKEN='<IMG_CONTEXT>'
+    TEMP_CONTEXT_TOKEN='<TEMP_CONTEXT>'
     IMG_TOKEN = '<image>'
 
     cache_dir = f"{cache_root_dir}/{(encoder_variant.split('/')[1])}"
@@ -119,7 +127,8 @@ def get_custom_chat_template(conversations: List[Dict], tokenizer, encoder_varia
     sys.modules['get_conv_template'] = conv_module
     spec.loader.exec_module(conv_module)
 
-    image_tokens_templates = IMG_START_TOKEN + IMG_CONTEXT_TOKEN * num_image_tokens_total + IMG_END_TOKEN
+    temporal_tokens_template = TEMP_CONTEXT_TOKEN * num_temporal_tokens
+    image_tokens_templates = temporal_tokens_template + IMG_START_TOKEN + IMG_CONTEXT_TOKEN * num_image_tokens_total + IMG_END_TOKEN
 
     prompts_conv = []
     prompts_question = []

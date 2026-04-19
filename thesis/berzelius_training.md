@@ -1,8 +1,8 @@
 # SimLingo Training on Berzelius
 
-Concise runbook for baseline training setup before implementing the temporal method.
+Concise runbook for the current working training setup.
 
-## 0. Load Environment
+## 1. Load Environment
 
 ```bash
 export USERNAME="${USERNAME:-${USER}}"
@@ -19,13 +19,10 @@ Quick checks:
 echo "$REPO_DIR"
 echo "$MODEL_CKPT"
 echo "$SLURM_ACCOUNT"
-echo "$SLURM_PARTITION"
 test -f "$MODEL_CKPT" && echo "checkpoint ok"
 ```
 
-## 1. Download Dataset
-
-Store the dataset outside the repo:
+## 2. Download And Extract Dataset
 
 ```bash
 cd "${BASE_DIR}"
@@ -38,24 +35,12 @@ cd simlingo_hf
 git lfs pull
 ```
 
-This downloads:
-- the compressed dataset tarballs
-- `buckets_paths.pkl`
-
-## 2. Extract Dataset
-
-Create target folders:
-
 ```bash
 cd "${BASE_DIR}/database"
 mkdir -p simlingo
 mkdir -p bucketsv2_simlingo
 cp simlingo_hf/buckets_paths.pkl bucketsv2_simlingo/
-```
 
-Extract all tarballs into one dataset root:
-
-```bash
 cd "${BASE_DIR}/database/simlingo_hf"
 for f in *.tar.gz; do
   echo "Extracting $f"
@@ -63,26 +48,11 @@ for f in *.tar.gz; do
 done
 ```
 
-Expected extracted top-level folders:
-- `data/`
-- `commentary/`
-- `dreamer/`
-- `drivelm/`
+Expected:
+- `${BASE_DIR}/database/simlingo/data/simlingo`
+- `${BASE_DIR}/database/bucketsv2_simlingo/buckets_paths.pkl`
 
-Quick checks:
-
-```bash
-test -d "${BASE_DIR}/database/simlingo/data/simlingo" && echo "dataset ok"
-test -f "${BASE_DIR}/database/bucketsv2_simlingo/buckets_paths.pkl" && echo "bucket file ok"
-```
-
-## 3. Expose Dataset Paths Inside the Repo
-
-The training configs expect:
-- `database/simlingo`
-- `database/bucketsv2_simlingo`
-
-Create repo-local symlinks once:
+## 3. Create Repo Symlinks
 
 ```bash
 cd "${REPO_DIR}"
@@ -96,28 +66,27 @@ Verify:
 ```bash
 readlink -f database/simlingo
 readlink -f database/bucketsv2_simlingo
-find -L database/simlingo/data/simlingo -maxdepth 3 -type d | sed -n '1,20p'
-ls -lh database/bucketsv2_simlingo/buckets_paths.pkl
 ```
 
-## 4. Training Uses SLURM
+## 4. Submit Jobs Through SLURM
 
-Do not run `python simlingo_training/train.py ...` directly from a login shell.
-
-Use the smoke-test SLURM launcher:
-- `thesis/slurm/train_smoke.slurm`
-
-Create log folder once:
+Create the log directory once:
 
 ```bash
 mkdir -p "${LOG_ROOT}/training"
 ```
 
-Submit the smoke test:
+All working SLURM scripts:
+- unset `LD_LIBRARY_PATH` before Python
+- use the released baseline checkpoint from `MODEL_CKPT`
+- send email on `END,FAIL`
+
+Submit from the repo root:
 
 ```bash
 cd "${REPO_DIR}"
-sbatch --account="${SLURM_ACCOUNT}" thesis/slurm/train_smoke.slurm
+source thesis/env.sh
+sbatch --account="${SLURM_ACCOUNT}" thesis/slurm/<script>.slurm
 ```
 
 Monitor:
@@ -128,88 +97,102 @@ tail -f "${LOG_ROOT}/training/<jobid>.out"
 tail -f "${LOG_ROOT}/training/<jobid>.err"
 ```
 
-The smoke-test job:
-- requests 1 GPU
-- uses `experiment=debug`
-- keeps WandB offline
-- uses batch size 1 and `num_workers=0`
-- uses `overfit=1` so the epoch finishes quickly on a single repeated batch
-- runs 1 epoch
-- validates at epoch 1 so Lightning writes a checkpoint
-- loads the released baseline checkpoint through `MODEL_CKPT`
-- sends email on `END` and `FAIL`
-- keeps `CUDA_HOME` and `PATH`
-- makes batch jobs robust to unset shell vars:
-  - `CONDA_DEFAULT_ENV="${CONDA_DEFAULT_ENV:-}"`
-  - `PYTHONPATH="${PYTHONPATH:-}:..."`
-- explicitly unsets `LD_LIBRARY_PATH` before launching Python so PyTorch does not pick the system cuDNN from `/software/sse/manual/CUDA/.../lib64`
+## 5. Useful Scripts
 
-Resume smoke test:
+Baseline checkpoint smoke test:
+- `thesis/slurm/train_smoke.slurm`
+- purpose: verify 1-GPU training, validation, and checkpoint writing
+
+Temporal smoke test:
+- `thesis/slurm/train_temporal_smoke.slurm`
+- purpose: verify `hist_len=3` and the temporal module path end to end
+
+Temporal 1-GPU pilot:
+- `thesis/slurm/train_temporal_pilot.slurm`
+- uses `experiment=temporal_qformer_seed1`
+- purpose: short bucketed temporal training run with the temporal module as the only new trainable component
+
+Optional baseline bucketed multi-GPU dry run:
+- `thesis/slurm/train_bucket_multigpu_smoke.slurm`
+- purpose: verify bucketed datamodule plus distributed training
+
+Temporal 2-GPU dry run:
+- `thesis/slurm/train_temporal_multigpu_smoke.slurm`
+- purpose: verify temporal training also works in distributed mode before a final long run
+
+Final temporal training:
+- `thesis/slurm/train_temporal_final.slurm`
+- purpose: full 8-GPU temporal-only training run using the full dataset and bucketed recipe
+
+## 6. Current Temporal Experiment
+
+Experiment config:
+- `simlingo_training/config/experiment/temporal_qformer_seed1.yaml`
+
+Current settings:
+- `hist_len=3`
+- `model.temporal_model.enabled=true`
+- vision encoder frozen
+- language model frozen
+- adaptor frozen
+- waypoint encoder frozen
+
+This means the first temporal experiment trains only the temporal Q-former.
+
+## 7. About The Temporal Pilot
+
+`train_temporal_pilot.slurm` currently overrides:
+
+```bash
+data_module.base_dataset.max_routes=20
+data_module.base_dataset.max_samples=50
+max_epochs=1
+gpus=1
+data_module.batch_size=1
+data_module.num_workers=0
+```
+
+Meaning:
+- `max_routes=20`: only scan 20 routes per dataset build
+- `max_samples=50`: cap each bucket dataset at 50 samples after bucket filtering
+
+Important:
+- the pilot still uses the bucketed code path
+- but `max_samples=50` is applied per bucket dataset, so many rare buckets may end up empty
+- good for a fast pilot, not representative of the full bucket distribution
+
+For a more realistic temporal pilot later:
+- keep `max_routes=20`
+- remove `max_samples`
+
+## 8. Current Status
+
+Validated:
+- baseline 1-GPU smoke test works and writes checkpoints
+- bucketed 2-GPU baseline dry run works
+- `hist_len=3` fallback smoke test works
+- temporal smoke test works
+- temporal 1-GPU pilot works
+
+Still recommended before a final long temporal run:
+- run `train_temporal_multigpu_smoke.slurm`
+
+After that, the final launcher is:
 
 ```bash
 cd "${REPO_DIR}"
-sbatch --account="${SLURM_ACCOUNT}" thesis/slurm/train_resume_smoke.slurm
+source thesis/env.sh
+sbatch --account="${SLURM_ACCOUNT}" thesis/slurm/train_temporal_final.slurm
 ```
 
-This resumes from:
-- `outputs/2026-04-18/14-26-58/checkpoints/last.ckpt`
+## 9. Cleanup
 
-and verifies that Lightning/DeepSpeed can restore trainer state from a saved checkpoint.
-
-Bucketed multi-GPU dry run:
-
-```bash
-cd "${REPO_DIR}"
-sbatch --account="${SLURM_ACCOUNT}" thesis/slurm/train_bucket_multigpu_smoke.slurm
-```
-
-This uses:
-- `experiment=simlingo_seed1`
-- `gpus=2`
-- `overfit=1`
-- `max_epochs=1`
-
-and is meant only to verify that the bucketed datamodule and multi-GPU training work correctly.
-
-## 5. Success Criteria
-
-The smoke test is successful if:
-- dataset paths resolve
-- `buckets_paths.pkl` loads
-- InternVL loads
-- the released checkpoint loads
-- at least one training batch runs
-- a loss value is produced
-- the run directory and `checkpoints/` directory are created
-- at least one checkpoint file is written
-
-Current status:
-- `train_smoke.slurm` is working
-- the successful checkpoint smoke test wrote:
-  - `outputs/2026-04-18/14-26-58/checkpoints/epoch=000.ckpt`
-  - `outputs/2026-04-18/14-26-58/checkpoints/last.ckpt`
-- `train_resume_smoke.slurm` successfully restored from `last.ckpt` and resumed at `Epoch 1`
-- the resume smoke test then failed on the LR scheduler with:
-  - `ValueError: Tried to step 2 times. The specified number of total steps is 1`
-- interpretation:
-  - checkpoint restore works
-  - the tiny `overfit=1` resume setup is not a clean full resume-validation test for scheduler state
-- `train_bucket_multigpu_smoke.slurm` completed successfully
-- the successful bucketed 2-GPU dry run wrote:
-  - `outputs/2026_04_18_22_54_15_bucket_multigpu_smoke/checkpoints/epoch=000.ckpt`
-  - `outputs/2026_04_18_22_54_15_bucket_multigpu_smoke/checkpoints/last.ckpt`
-- this confirms:
-  - the bucketed datamodule works
-  - 2-GPU distributed training works
-  - checkpoint saving also works in the bucketed multi-GPU setup
-- there is no remaining baseline infrastructure blocker before implementing the temporal module
-
-## 6. Cleanup Later
-
-After the smoke test succeeds, remove the original compressed clone to free space:
+After setup is stable, you can remove the original compressed clone:
 
 ```bash
 rm -rf "${BASE_DIR}/database/simlingo_hf"
 ```
 
-Do not remove it before the smoke test passes.
+This should not affect the current training setup, which uses:
+- `${BASE_DIR}/database/simlingo`
+- `${BASE_DIR}/database/bucketsv2_simlingo`

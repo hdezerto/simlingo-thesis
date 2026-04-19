@@ -25,11 +25,27 @@ class LanguageModelConfig:
 
 
 @dataclass
+class TemporalModelConfig:
+    enabled: bool = False
+    num_queries: int = 8
+    num_layers: int = 2
+    num_heads: int = 8
+    dropout: float = 0.1
+    gate_init: float = -2.0
+
+    _target_: str = "simlingo_training.models.temporal.qformer.TemporalQFormer"
+
+
+@dataclass
 class DrivingModelConfig:
     vision_model: Any
     language_model: Any
+    temporal_model: Any = field(default_factory=TemporalModelConfig)
 
     lr: float = 5e-2
+    freeze_language_model: bool = False
+    freeze_adaptors: bool = False
+    freeze_wp_encoder: bool = False
 
     weight_decay: float = 0.1
     betas: Tuple[float, float] = (0.9, 0.999)
@@ -60,6 +76,8 @@ class DatasetBaseConfig:
     pred_len: int = 11 # including the current time step
     hist_len: int = 1 # including the current time step
     hist_len_commentary: int = 5 # including the current time step
+    max_routes: Optional[int] = None
+    max_samples: Optional[int] = None
     
     img_augmentation: bool = True
     img_augmentation_prob: float = 0.5
@@ -156,6 +174,7 @@ def register_configs():
     cs.store(group="model", name="driving", node=DrivingModelConfig)
     cs.store(group="model/vision_model", name="vlm", node=VLMEncoderConfig)
     cs.store(group="model/language_model", name="llm", node=LanguageModelConfig)
+    cs.store(group="model/temporal_model", name="qformer", node=TemporalModelConfig)
 
 
 register_configs()

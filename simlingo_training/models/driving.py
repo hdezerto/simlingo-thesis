@@ -38,6 +38,11 @@ class NormZeroOne(nn.Module):
 
 
 class DrivingModel(pl.LightningModule):
+    @staticmethod
+    def set_module_trainable(module: nn.Module, trainable: bool) -> None:
+        for parameter in module.parameters():
+            parameter.requires_grad = trainable
+
     def __init__(
         self,
         cfg_data_module,
@@ -94,6 +99,22 @@ class DrivingModel(pl.LightningModule):
             hidden_size2=512,
             # norm_layer=NormZeroOne(min_max=(-32.0, 32.0)),
         )
+        self.temporal_encoder = None
+        if self.temporal_model.enabled:
+            max_history_frames = max(1, self.cfg_data_module.base_dataset.hist_len - 1)
+            self.temporal_encoder = hydra.utils.instantiate(
+                self.temporal_model,
+                hidden_size=self.language_model.hidden_size,
+                max_history_frames=max_history_frames,
+                _recursive_=False,
+            )
+
+        if self.freeze_language_model:
+            self.set_module_trainable(self.language_model, False)
+        if self.freeze_adaptors:
+            self.set_module_trainable(self.adaptors, False)
+        if self.freeze_wp_encoder:
+            self.set_module_trainable(self.wp_encoder, False)
 
         if 'tokenizer' in self.processor.__dict__:
             self.tokenizer = self.processor.tokenizer
@@ -122,6 +143,7 @@ class DrivingModel(pl.LightningModule):
                     pixel_values = driving_input.camera_images,
                     placeholder_values = driving_input.prompt_inference.placeholder_values,
                     wp_encoder = self.wp_encoder,
+                    temporal_encoder = self.temporal_encoder,
                 )
             
             input_embeds_all = adaptor_dict["language_inputs"]
@@ -202,6 +224,7 @@ class DrivingModel(pl.LightningModule):
             pixel_values = driving_input.camera_images,
             placeholder_values = driving_input.prompt.placeholder_values,
             wp_encoder = self.wp_encoder,
+            temporal_encoder = self.temporal_encoder,
         )
 
         position_ids = None

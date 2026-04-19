@@ -32,12 +32,16 @@ def main(cfg: TrainConfig):
     processor = AutoProcessor.from_pretrained(cfg.model.vision_model.variant, trust_remote_code=True)
     model_type_name = cfg.model.vision_model.variant.split('/')[1]
     cache_dir = None #f"pretrained/{(model_type_name)}"
+    temporal_enabled = cfg.model.temporal_model.enabled
+    num_temporal_tokens = cfg.model.temporal_model.num_queries if temporal_enabled else 0
     
     data_module = hydra.utils.instantiate(
         cfg.data_module, 
         processor=processor,
         encoder_variant=cfg.model.vision_model.variant,
         llm_variant=cfg.model.language_model.variant,
+        temporal_enabled=temporal_enabled,
+        num_temporal_tokens=num_temporal_tokens,
         _recursive_=False
     )
     
@@ -54,7 +58,23 @@ def main(cfg: TrainConfig):
             state_dict = get_fp32_state_dict_from_zero_checkpoint(cfg.checkpoint)
         else:
             state_dict = torch.load(cfg.checkpoint, map_location="cpu")
-        model.load_state_dict(state_dict)
+        strict_checkpoint_loading = not cfg.model.temporal_model.enabled
+        load_result = model.load_state_dict(state_dict, strict=strict_checkpoint_loading)
+        if not strict_checkpoint_loading:
+            missing_keys = list(load_result.missing_keys)
+            unexpected_keys = list(load_result.unexpected_keys)
+            non_temporal_missing = [key for key in missing_keys if not key.startswith("temporal_encoder.")]
+            non_temporal_unexpected = [key for key in unexpected_keys if not key.startswith("temporal_encoder.")]
+            if non_temporal_missing or non_temporal_unexpected:
+                raise RuntimeError(
+                    "Checkpoint loading failed outside the temporal module. "
+                    f"Missing keys: {non_temporal_missing}. "
+                    f"Unexpected keys: {non_temporal_unexpected}."
+                )
+            if missing_keys:
+                print("Initialising new temporal-module weights from scratch:")
+                for key in missing_keys:
+                    print(f"  - {key}")
 
         
     # print config

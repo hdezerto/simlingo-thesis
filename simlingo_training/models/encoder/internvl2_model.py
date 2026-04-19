@@ -6,13 +6,89 @@ from transformers import AutoModel
 class LingoInternVLModel(nn.Module):
     def __init__(self, variant, *args, **kwargs):
         super().__init__()
-        self.model = AutoModel.from_pretrained(variant, trust_remote_code=True)
+        self.model = AutoModel.from_pretrained(
+            variant,
+            trust_remote_code=True,
+            torch_dtype=torch.float16,
+        )
         try:
             self.num_embeddings = self.model.language_model.model.embed_tokens.num_embeddings
         except:
             self.num_embeddings = self.model.language_model.vocab_size
         self.use_global_img = None
         self.processor = None
+
+    def extract_frame_features(self, pixel_values: torch.FloatTensor, embed_dim: int) -> torch.FloatTensor:
+        """
+        Encode all temporal frames, then return features grouped per frame.
+
+        Args:
+            pixel_values: [B, T, NP, C, H, W]
+            embed_dim: output token size expected by the language model
+
+        Returns:
+            Tensor with shape [B, T, P, D], where P is the number of visual
+            tokens produced per frame and D == embed_dim.
+        """
+        BS, T, NP, C, H, W = pixel_values.shape
+        pixel_values = pixel_values.reshape(BS * T * NP, C, H, W)
+        image_features = self.model.extract_feature(pixel_values)
+        return image_features.reshape(BS, T, -1, embed_dim)
+
+    @staticmethod
+    def fill_special_token_embeddings(
+        inputs_embeds: torch.Tensor,
+        input_ids: torch.Tensor,
+        token_id: int,
+        token_embeds: torch.Tensor,
+        token_name: str,
+    ) -> torch.Tensor:
+        for batch_idx in range(input_ids.size(0)):
+            token_positions = (input_ids[batch_idx] == token_id).nonzero(as_tuple=False).flatten()
+            if token_positions.numel() == 0:
+                if token_embeds.size(1) == 0:
+                    continue
+                raise ValueError(f"Prompt is missing expected {token_name} placeholders.")
+            if token_positions.numel() != token_embeds.size(1):
+                raise ValueError(
+                    f"Expected {token_embeds.size(1)} {token_name} placeholders but found "
+                    f"{token_positions.numel()}."
+                )
+            inputs_embeds[batch_idx, token_positions] = token_embeds[batch_idx]
+        return inputs_embeds
+
+    @staticmethod
+    def replace_waypoint_placeholders(
+        inputs_embeds: torch.Tensor,
+        input_ids: torch.Tensor,
+        placeholder_values: Optional[List[dict]],
+        wp_encoder: Optional[nn.Module],
+    ) -> torch.Tensor:
+        if not placeholder_values or wp_encoder is None:
+            return inputs_embeds
+
+        wp_encoder_dtype = wp_encoder.mlp[0].weight.dtype
+        for batch_idx, placeholder_dict in enumerate(placeholder_values):
+            if not placeholder_dict:
+                continue
+            for token_id, coords_value in placeholder_dict.items():
+                token_positions = (input_ids[batch_idx] == token_id).nonzero(as_tuple=False).flatten()
+                if token_positions.numel() == 0:
+                    continue
+
+                coords = torch.as_tensor(coords_value, device=input_ids.device, dtype=wp_encoder_dtype)
+                wp_embeds = wp_encoder(coords.unsqueeze(0)).squeeze(0).to(dtype=inputs_embeds.dtype)
+
+                start = token_positions[0].item()
+                end = start + wp_embeds.size(0)
+                expected_positions = torch.arange(start, end, device=input_ids.device)
+                if token_positions.numel() != wp_embeds.size(0) or not torch.equal(token_positions, expected_positions):
+                    raise ValueError(
+                        "Placeholder tokens must occupy one contiguous block so their embeddings can be replaced."
+                    )
+                inputs_embeds[batch_idx, start:end] = wp_embeds
+
+        return inputs_embeds
         
     def replace_placeholder_tokens(
         self,
@@ -24,6 +100,7 @@ class LingoInternVLModel(nn.Module):
         return_dict: Optional[bool] = None,
         placeholder_values: Optional[List[dict]] = None,
         wp_encoder: Optional[nn.Module] = None,
+        temporal_encoder: Optional[nn.Module] = None,
     ):
         
         if 'tokenizer' in self.processor.__dict__:
@@ -32,7 +109,9 @@ class LingoInternVLModel(nn.Module):
             self.tokenizer = self.processor
 
         IMG_CONTEXT_TOKEN = '<IMG_CONTEXT>'
+        TEMP_CONTEXT_TOKEN = '<TEMP_CONTEXT>'
         img_context_token_id = self.tokenizer.convert_tokens_to_ids(IMG_CONTEXT_TOKEN)
+        temp_context_token_id = self.tokenizer.convert_tokens_to_ids(TEMP_CONTEXT_TOKEN)
         self.img_context_token_id = img_context_token_id
         
         output_attentions = output_attentions if output_attentions is not None else self.model.config.output_attentions
@@ -51,85 +130,37 @@ class LingoInternVLModel(nn.Module):
             input_ids = adaptor_dict['language__ids']
             
             # 2a replace placeholder
-            smallest_added_id = self.tokenizer.additional_special_tokens_ids[0]
-            special_ids = torch.tensor(list(set(input_ids[(input_ids >= smallest_added_id)].tolist())), device=input_ids.device)
-            # special_ids = torch.tensor(list(set(ids[(ids > 50294)].tolist())), device=ids.device)
-            special_ids = special_ids.view(-1, 1, 1)
-            batch_size, seq_len = input_ids.shape
-
-            if special_ids.size(0) > 0 and len(placeholder_values) > 0:
-                wp_encoder_dtype = wp_encoder.mlp[0].weight.dtype
-
-                # Create a mask where the special_ids are located
-                mask = input_ids == special_ids
-
-                # Convert the mask to float and use torch.cumsum to get cumulative sum along the sequence length dimension
-                cumsum_mask = torch.cumsum(mask.float(), dim=2)
-
-                # Create a mask to get the first occurrence by checking where cumsum is 1
-                first_occurrence_mask = (cumsum_mask == 1) & mask
-
-                # Use torch.argmax to get the indices of the first occurrence
-                first_occurrences = torch.argmax(first_occurrence_mask.float(), dim=2)
-                # swap the dimensions to get the batch and sequence length
-                first_occurrences = first_occurrences.transpose(0, 1)
-
-                # get coords from label.placeholder_values with batch and special_id as key
-                special_token_pos = first_occurrences.nonzero()
-
-                coords = [torch.tensor(placeholder_values[b_id][special_ids[key_id].item()], device=input_ids.device, dtype=wp_encoder_dtype) for key_id, b_id in zip(special_token_pos[:, 1], special_token_pos[:, 0])]
-                coords_length_org = [len(coord) for coord in coords]
-                coords = torch.cat(coords)
-                wp_embeds = wp_encoder(coords.unsqueeze(0)).squeeze(0)
-                wp_embeds = torch.split(wp_embeds, coords_length_org)
-
-                first_occurrences_filtered = [first_occurrences[i] for i in special_token_pos[:, 0]]
-
-                for i, (pos, first_occurrence) in enumerate(zip(special_token_pos, first_occurrences_filtered)):
-                    start = first_occurrence[pos[1]]
-                    end = start + coords_length_org[i]
-                    inputs_embeds[pos[0], start:end] = wp_embeds[i]
+            inputs_embeds = self.replace_waypoint_placeholders(
+                inputs_embeds,
+                input_ids,
+                placeholder_values,
+                wp_encoder,
+            )
 
             # 2. Merge text and images
             if pixel_values is not None and input_ids.shape[1] != 1 and pixel_values.size(0) > 0:
-                all_pixel_values = [pixel_values]
-                    
-                all_image_features = []
-                all_feature_lens = []
-                _, N_embed, C_embed = inputs_embeds.shape
-                
-                for pixel_values_tmp in all_pixel_values:
-                    BS, T, NP, C, H, W = pixel_values_tmp.shape
-                    assert T == 1, "Only one frame is supported for now"
-                    # for multi-frame support, we need to change the code here
-                    
-                    pixel_values_tmp = pixel_values_tmp.view(BS, NP, C, H, W)
+                _, _, C_embed = inputs_embeds.shape
+                BS, T, NP, C, H, W = pixel_values.shape
+                frame_features = self.extract_frame_features(pixel_values, C_embed)
+                current_frame_embeds = frame_features[:, -1].to(dtype=inputs_embeds.dtype)
+                inputs_embeds = self.fill_special_token_embeddings(
+                    inputs_embeds,
+                    input_ids,
+                    self.img_context_token_id,
+                    current_frame_embeds,
+                    IMG_CONTEXT_TOKEN,
+                )
 
-                    if pixel_values_tmp.dim() == 5:
-                        pixel_values_tmp = pixel_values_tmp.reshape(BS*NP, C, H, W)
-                    elif pixel_values_tmp.dim() != 4:
-                        # otherwise has to be stacked from list of (num_patches, num_channels, height, width)
-                        raise ValueError(f"pixel_values of shape {pixel_values_tmp.shape}, expect to be of 4 or 5 dimensions")
-                    
-                    image_features = self.model.extract_feature(pixel_values_tmp)
-                    image_features = image_features.reshape(-1, C_embed)
-                                        
-                    all_image_features.append(image_features)
-
-                vit_embeds = torch.cat(all_image_features, dim=0)
-                inputs_embeds = inputs_embeds.reshape(BS * N_embed, C_embed)
-                input_ids = input_ids.reshape(BS * N_embed)
-                selected = (input_ids == self.img_context_token_id)
-                try:
-                    inputs_embeds[selected] = inputs_embeds[selected] * 0.0 + vit_embeds.reshape(-1, C_embed)
-                except Exception as e:
-                    vit_embeds = vit_embeds.reshape(-1, C)
-                    print(f'warning: {e}, inputs_embeds[selected].shape={inputs_embeds[selected].shape}, '
-                        f'vit_embeds.shape={vit_embeds.shape}')
-                    n_token = selected.sum()
-                    inputs_embeds[selected] = inputs_embeds[selected] * 0.0 + vit_embeds[:n_token]
-                inputs_embeds = inputs_embeds.reshape(BS, N_embed, C_embed)
-                input_ids = input_ids.reshape(BS, N_embed)
+                if temporal_encoder is not None:
+                    past_frame_embeds = frame_features[:, :-1]
+                    temporal_embeds = temporal_encoder(past_frame_embeds).to(dtype=inputs_embeds.dtype)
+                    inputs_embeds = self.fill_special_token_embeddings(
+                        inputs_embeds,
+                        input_ids,
+                        temp_context_token_id,
+                        temporal_embeds,
+                        TEMP_CONTEXT_TOKEN,
+                    )
             # pixel_values is not None but is empty ---> text only cases
             elif pixel_values is not None and input_ids.shape[1] != 1 and pixel_values.size(0) == 0:
                 # there are no images

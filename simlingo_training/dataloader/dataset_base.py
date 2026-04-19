@@ -215,6 +215,10 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
                 route_dirs = route_dirs[:int(split_percentage * len(route_dirs))]
             elif self.split == "val":
                 route_dirs = route_dirs[int(split_percentage * len(route_dirs)):]
+
+        if self.max_routes is not None:
+            route_dirs = route_dirs[:self.max_routes]
+            print(f'Using first {len(route_dirs)} routes due to max_routes={self.max_routes}')
         
         total_routes += len(route_dirs)
         
@@ -329,6 +333,16 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
                 self.augment_exists.append(augment_exist)
                 if dreamer:
                     self.alternative_trajectories.append(dreamer_file_path)
+
+        if self.max_samples is not None:
+            self.images = self.images[:self.max_samples]
+            self.boxes = self.boxes[:self.max_samples]
+            self.measurements = self.measurements[:self.max_samples]
+            self.sample_start = self.sample_start[:self.max_samples]
+            self.augment_exists = self.augment_exists[:self.max_samples]
+            if dreamer:
+                self.alternative_trajectories = self.alternative_trajectories[:self.max_samples]
+            print(f'Using first {len(self.images)} samples due to max_samples={self.max_samples}')
 
         # There is a complex "memory leak"/performance issue when using Python
         # objects like lists in a Dataloader that is loaded with

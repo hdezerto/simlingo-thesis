@@ -55,6 +55,9 @@ class DataModule(LightningDataModule):
         self.IMG_START_TOKEN='<img>'
         self.IMG_END_TOKEN='</img>'
         self.IMG_CONTEXT_TOKEN='<IMG_CONTEXT>'
+        self.TEMP_CONTEXT_TOKEN='<TEMP_CONTEXT>'
+        self.temporal_enabled = getattr(self, "temporal_enabled", False)
+        self.num_temporal_tokens = getattr(self, "num_temporal_tokens", 0)
 
         self.num_image_tokens_per_patch = get_num_image_tokens_per_patch(self.encoder_variant)
         self.num_image_tokens_total = self.num_image_tokens_per_patch * self.NUM_IMAGE_PATCHES
@@ -65,7 +68,7 @@ class DataModule(LightningDataModule):
         else:
             self.tokenizer = self.processor
         # TODO: not needed anymore?
-        self.tokenizer.add_special_tokens({'additional_special_tokens': ['<WAYPOINTS>','<WAYPOINTS_DIFF>', '<ORG_WAYPOINTS_DIFF>', '<ORG_WAYPOINTS>', '<WAYPOINT_LAST>', '<ROUTE>', '<ROUTE_DIFF>', '<TARGET_POINT>']})
+        self.tokenizer.add_special_tokens({'additional_special_tokens': ['<WAYPOINTS>','<WAYPOINTS_DIFF>', '<ORG_WAYPOINTS_DIFF>', '<ORG_WAYPOINTS>', '<WAYPOINT_LAST>', '<ROUTE>', '<ROUTE_DIFF>', '<TARGET_POINT>', self.TEMP_CONTEXT_TOKEN]})
         self.tokenizer.padding_side = "left"
 
     def setup(self, stage=None):
@@ -238,7 +241,6 @@ class DataModule(LightningDataModule):
         for idx, img_to_consider in enumerate(self.IMAGES_TO_CONSIDER):
             img_tmp = getattr(data[0], img_to_consider)
             T, C, H, W = img_tmp.shape
-            assert T == 1, "Only one timestep as input supported"
             
             images_batch_tensor = torch.tensor(np.asarray([getattr(data[i], img_to_consider) if getattr(data[i], img_to_consider) is not None else np.zeros_like(img_tmp) for i in range(len(data))])).float()
             images_batch_tensor = images_batch_tensor.view(BS*T, C, H, W)
@@ -259,6 +261,7 @@ class DataModule(LightningDataModule):
             new_height = images_pixel.shape[3]
             new_width = images_pixel.shape[4]
             images_pixel = images_pixel.view(BS, T, num_patches, C, new_height, new_width)
+            image_sizes = image_sizes.view(BS, T, -1)
             
             if img_to_consider == 'image_ff':
                 image_ff_pixel = images_pixel
@@ -267,7 +270,13 @@ class DataModule(LightningDataModule):
                 raise ValueError(f"Image type {img_to_consider} not supported")
 
         conversations = [data[i].conversation for i in range(BS)]
-        conversation_dict, question_dict = get_custom_chat_template(conversations, self.tokenizer, self.encoder_variant, self.num_image_tokens_total)
+        conversation_dict, question_dict = get_custom_chat_template(
+            conversations,
+            self.tokenizer,
+            self.encoder_variant,
+            self.num_image_tokens_total,
+            num_temporal_tokens=self.num_temporal_tokens if self.temporal_enabled else 0,
+        )
 
         placeholder_batch_list = []
         for i in range(BS):
