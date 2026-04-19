@@ -7,11 +7,23 @@ import torch
 from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoint
 from omegaconf import OmegaConf
 from pytorch_lightning import Trainer
-from transformers import AutoProcessor, AutoTokenizer
+from transformers import AutoProcessor
 
 from simlingo_training.config import TrainConfig
 from simlingo_training.utils.logging_project import setup_logging
 # from simlingo_training.callbacks.visualise import VisualiseCallback
+
+
+def find_run_config_path(load_path: str) -> Path:
+    path = Path(load_path)
+    search_root = path if path.is_dir() else path.parent
+
+    for root in [search_root, *search_root.parents]:
+        candidate = root / ".hydra" / "config.yaml"
+        if candidate.exists():
+            return candidate
+
+    raise FileNotFoundError(f"Could not find .hydra/config.yaml for checkpoint: {load_path}")
 
 @hydra.main(config_path=f"config", config_name="config", version_base="1.1")
 def main(cfg: TrainConfig):
@@ -25,9 +37,9 @@ def main(cfg: TrainConfig):
 
     qa_dataset = cfg.data_module.qa_dataset
     insteval_dataset = cfg.data_module.insteval_dataset
-    load_path = '/YOUR_PATH/outputs/simlingo/checkpoints/epoch=013.ckpt'
+    load_path = cfg.checkpoint
     if load_path is not None:
-        load_path_config = Path(load_path).parent.parent / '.hydra/config.yaml'
+        load_path_config = find_run_config_path(load_path)
         cfg = OmegaConf.load(load_path_config)
     
     cfg.data_module.qa_dataset = qa_dataset
@@ -64,12 +76,11 @@ def main(cfg: TrainConfig):
     # disable img_shift_augmentation
     cfg.data_module.base_dataset.img_shift_augmentation = False
     
-    if "2B" in cfg.model.language_model.variant:
-        processor = AutoTokenizer.from_pretrained(cfg.model.language_model.variant, trust_remote_code=True, use_fast=False)
-    else:
-        processor = AutoProcessor.from_pretrained(cfg.model.language_model.variant, trust_remote_code=True, use_fast=False)
+    processor = AutoProcessor.from_pretrained(cfg.model.vision_model.variant, trust_remote_code=True, use_fast=False)
     model_type_name = cfg.model.vision_model.variant.split('/')[1]
     cache_dir = f"pretrained/{(model_type_name)}"
+    temporal_enabled = cfg.model.temporal_model.enabled
+    num_temporal_tokens = cfg.model.temporal_model.num_queries if temporal_enabled else 0
     
     data_module = hydra.utils.instantiate(
         cfg.data_module, 
@@ -77,6 +88,8 @@ def main(cfg: TrainConfig):
         encoder_variant=cfg.model.vision_model.variant,
         llm_variant=cfg.model.language_model.variant,
         predict=True,
+        temporal_enabled=temporal_enabled,
+        num_temporal_tokens=num_temporal_tokens,
         _recursive_=False
     )
     
@@ -88,12 +101,25 @@ def main(cfg: TrainConfig):
         _recursive_=False
         )
 
-    if cfg.checkpoint is not None:
-        if os.path.isdir(cfg.checkpoint):
-            state_dict = get_fp32_state_dict_from_zero_checkpoint(cfg.checkpoint)
+    if load_path is not None:
+        if os.path.isdir(load_path):
+            state_dict = get_fp32_state_dict_from_zero_checkpoint(load_path)
         else:
-            state_dict = torch.load(cfg.checkpoint, map_location="cpu")
-        model.load_state_dict(state_dict)
+            state_dict = torch.load(load_path, map_location="cpu")
+
+        strict_checkpoint_loading = not cfg.model.temporal_model.enabled
+        load_result = model.load_state_dict(state_dict, strict=strict_checkpoint_loading)
+        if not strict_checkpoint_loading:
+            missing_keys = list(load_result.missing_keys)
+            unexpected_keys = list(load_result.unexpected_keys)
+            non_temporal_missing = [key for key in missing_keys if not key.startswith("temporal_encoder.")]
+            non_temporal_unexpected = [key for key in unexpected_keys if not key.startswith("temporal_encoder.")]
+            if non_temporal_missing or non_temporal_unexpected:
+                raise RuntimeError(
+                    "Checkpoint loading failed outside the temporal module. "
+                    f"Missing keys: {non_temporal_missing}. "
+                    f"Unexpected keys: {non_temporal_unexpected}."
+                )
 
         
     # print config
@@ -141,10 +167,7 @@ def main(cfg: TrainConfig):
             check_val_every_n_epoch=cfg.val_every_n_epochs,
         )
 
-    if load_path is not None:
-        trainer.predict(model, data_module, ckpt_path=f"{load_path}/")
-    else:
-        trainer.predict(model, data_module)
+    trainer.predict(model, data_module)
 
 if __name__ == "__main__":
     main()

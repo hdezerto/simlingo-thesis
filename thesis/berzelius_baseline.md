@@ -255,6 +255,7 @@ Inside tmux:
 # 1. Load Environment
 module load Miniforge3/24.7.1-2-hpc1-bdist
 conda activate simlingo
+export EVAL_RUN_NAME="simlingo"
 source thesis/env.sh
 
 # 2. Set Parallelism (Limit to 8 concurrent jobs = 1 full node)
@@ -297,6 +298,11 @@ scancel -u "$USERNAME"
 ## 9. Results and Analysis
 
 After queue is empty and all jobs are done:
+
+```bash
+export EVAL_RUN_NAME="simlingo"
+source thesis/env.sh
+```
 
 First, merge and summarize the results for each seed:
 ```bash

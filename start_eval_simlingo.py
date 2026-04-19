@@ -253,6 +253,8 @@ _env = os.environ
 _repo_root = _env.get("REPO_DIR", os.path.abspath(os.path.dirname(__file__)))
 _base_dir = _env.get("BASE_DIR", os.path.dirname(_repo_root))
 _carla_root = _env.get("CARLA_ROOT", os.path.join(_base_dir, "carla", "CARLA_0.9.15"))
+_eval_out_root = _env.get("EVAL_OUT_ROOT", os.path.join(_base_dir, "eval_results", "Bench2Drive"))
+_eval_run_name = _env.get("EVAL_RUN_NAME", _env.get("EVAL_AGENT_NAME", "simlingo"))
 _checkpoint = _env.get(
     "MODEL_CKPT",
     os.path.join(
@@ -268,13 +270,13 @@ _checkpoint = _env.get(
 
 configs = [
     {
-        "agent": "simlingo",
+        "agent": _eval_run_name,
         "checkpoint": _checkpoint,
         "benchmark": "bench2drive",
         "route_path": os.path.join(_repo_root, "leaderboard", "data", "bench2drive_split"),
         "seeds": [1, 2, 3],
         "tries": 2,
-        "out_root": os.path.join(_base_dir, "eval_results", "Bench2Drive"),
+        "out_root": _eval_out_root,
         "carla_root": _carla_root,
         "repo_root": _repo_root,
         "agent_file": os.path.join(_repo_root, "team_code", "agent_simlingo.py"),
