@@ -6,7 +6,7 @@ defaults:
 
 model:
   lr: 3e-5
-  freeze_language_model: true
+  freeze_language_model: false
   freeze_adaptors: true
   freeze_wp_encoder: true
   predict_route_as_wps: True
@@ -22,14 +22,14 @@ model:
     freeze: true
   temporal_model:
     enabled: true
-    num_queries: 8
+    num_queries: 16
     num_layers: 2
     num_heads: 8
     dropout: 0.1
     gate_init: -2.0
 
 data_module:
-  batch_size: 6
+  batch_size: 12
   num_workers: 8
   base_dataset:
     data_path: database/simlingo
@@ -41,19 +41,20 @@ data_module:
     qa_augmentation: True
     img_shift_augmentation: True
     img_shift_augmentation_prob: 0.5
-    hist_len: 3
+    hist_len: 5
+    history_stride: 1
     route_as: target_point_command
     use_lmdrive_commands: True
     use_old_towns: True
     use_town13: True
     use_safety_flag: True
 
-max_epochs: 5
-val_every_n_epochs: 1
+max_epochs: 14
+val_every_n_epochs: 2
 
 gpus: 8
 seed: 9876
-name: temporal_qformer_seed_9876
+name: temporal_qformer_v2
 resume: False
 
 hydra:

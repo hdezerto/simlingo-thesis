@@ -97,10 +97,31 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
     def _append_and_get_frame_history(self, current_frame: np.ndarray) -> np.ndarray:
         self.image_buffer.append(current_frame.copy())
         frames = list(self.image_buffer)
-        if len(frames) < self.T:
-            pad_frame = frames[0]
-            frames = [pad_frame.copy() for _ in range(self.T - len(frames))] + frames
-        return np.stack(frames, axis=0)
+        sampled_frames = []
+        # Keep the current frame live every step, but sample older frames at the
+        # configured stride so inference matches the temporal spacing seen in training.
+        for history_offset in range(self.T - 1, -1, -1):
+            frame_idx = len(frames) - 1 - history_offset * self.temporal_inference_stride
+            if frame_idx < 0:
+                frame_idx = 0
+            sampled_frames.append(frames[frame_idx].copy())
+        return np.stack(sampled_frames, axis=0)
+
+    def _get_image_tensor_dtype(self) -> torch.dtype:
+        image_encoder = getattr(getattr(self.model, "vision_model", None), "image_encoder", None)
+        candidate_modules = [
+            getattr(image_encoder, "model", None),
+            image_encoder,
+            self.model,
+        ]
+        for module in candidate_modules:
+            if module is None:
+                continue
+            try:
+                return next(module.parameters()).dtype
+            except (AttributeError, StopIteration, TypeError):
+                continue
+        return torch.float16
 
     def setup(self, path_to_conf_file, route_index=None):
         """Sets up the agent. route_index is for logging purposes"""
@@ -182,7 +203,20 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
         self.temporal_enabled = bool(getattr(self.cfg.model.temporal_model, "enabled", False))
         self.num_temporal_tokens = int(self.cfg.model.temporal_model.num_queries) if self.temporal_enabled else 0
         self.T = int(self.cfg.data_module.base_dataset.hist_len) if self.temporal_enabled else 1
-        self.image_buffer = deque(maxlen=self.T)
+        self.history_stride = (
+            max(1, int(getattr(self.cfg.data_module.base_dataset, "history_stride", 1)))
+            if self.temporal_enabled else 1
+        )
+        # Training data is saved every `data_save_freq` simulator ticks, so use
+        # the same effective spacing online unless explicitly overridden.
+        default_temporal_inference_stride = self.history_stride * self.data_save_freq if self.temporal_enabled else 1
+        self.temporal_inference_stride = max(
+            1,
+            int(os.environ.get("TEMPORAL_INFERENCE_STRIDE", str(default_temporal_inference_stride))),
+        )
+        self.image_buffer = deque(
+            maxlen=1 + max(0, self.T - 1) * self.temporal_inference_stride
+        )
         self.num_image_tokens_per_patch = get_num_image_tokens_per_patch(self.cfg.model.vision_model.variant)
         self.NUM_IMAGE_PATCHES = 2
         self.num_image_tokens_total = self.num_image_tokens_per_patch * self.NUM_IMAGE_PATCHES
@@ -196,8 +230,6 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
         self.tokenizer.padding_side = "left"
         # llm_tokenizer = AutoTokenizer.from_pretrained(cfg.model.language_model.variant)
         cache_dir = f"pretrained/{(cfg.model.vision_model.variant.split('/')[1])}"
-        default_dtype = torch.get_default_dtype()
-        torch.set_default_dtype(torch.bfloat16)
         self.model = hydra.utils.instantiate(
                 cfg.model,
                 cfg_data_module=cfg.data_module,
@@ -205,7 +237,6 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
                 cache_dir=cache_dir,
                 _recursive_=False
             ).to(self.device)
-        torch.set_default_dtype(default_dtype)
         if os.path.isdir(self.config_path):
             state_dict = get_fp32_state_dict_from_zero_checkpoint(self.config_path)
         else:
@@ -490,7 +521,9 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
             new_width = processed_image.shape[5]
             
         else:
-            raise NotImplementedError(f"Encoder {self.cfg.data_module.encoder} not implemented yet")
+            raise NotImplementedError(
+                f"Vision variant {self.cfg.model.vision_model.variant} not implemented yet"
+            )
         
         gps_pos = self._route_planner.convert_gps_to_carla(input_data['gps'][1])
         
@@ -685,7 +718,10 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
                 loss_masking=question_dict['loss_masking'].to(self.device),
         )
 
-        self.DrivingInput["camera_images"] = processed_image.to(self.device).bfloat16()
+        self.DrivingInput["camera_images"] = processed_image.to(
+            self.device,
+            dtype=self._get_image_tensor_dtype(),
+        )
         self.DrivingInput["image_sizes"] = image_sizes
         self.DrivingInput["camera_intrinsics"] = torch.repeat_interleave(get_camera_intrinsics(W, H, 110).unsqueeze(0), 1, dim=0).view(1, 3, 3).float().to(self.device)
         self.DrivingInput["camera_extrinsics"] = torch.repeat_interleave(get_camera_extrinsics().unsqueeze(0), 1, dim=0).view(1, 4, 4).float().to(self.device)
@@ -750,7 +786,8 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
 
         # initialize DrivingInput with dict self.DrivingInput
         model_input = DrivingInput(**self.DrivingInput)
-        pred_speed_wps, pred_route, language = self.model(model_input)
+        with torch.autocast(device_type=self.device.type, dtype=torch.float16, enabled=self.device.type == "cuda"):
+            pred_speed_wps, pred_route, language = self.model(model_input)
         pred_speed_wps = pred_speed_wps.float() if pred_speed_wps is not None else None
         pred_route = pred_route.float() if pred_route is not None else None
 
@@ -954,10 +991,9 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
         Also writes logging files to disk.
         """
 
-        del self.model
-        del self.config
-        if self.cfg.data_module.encoder == 'llavanext':
-            del self.processor
+        for attr in ("model", "config", "cfg", "processor"):
+            if hasattr(self, attr):
+                delattr(self, attr)
 
 
 # Filter Functions

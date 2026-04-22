@@ -75,6 +75,7 @@ class DatasetBaseConfig:
     skip_first_n_frames: int = 10
     pred_len: int = 11 # including the current time step
     hist_len: int = 1 # including the current time step
+    history_stride: int = 1
     hist_len_commentary: int = 5 # including the current time step
     max_routes: Optional[int] = None
     max_samples: Optional[int] = None

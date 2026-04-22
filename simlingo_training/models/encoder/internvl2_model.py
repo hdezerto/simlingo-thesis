@@ -152,7 +152,8 @@ class LingoInternVLModel(nn.Module):
                 )
 
                 if temporal_encoder is not None:
-                    past_frame_embeds = frame_features[:, :-1]
+                    temporal_dtype = next(temporal_encoder.parameters()).dtype
+                    past_frame_embeds = frame_features[:, :-1].to(dtype=temporal_dtype)
                     temporal_embeds = temporal_encoder(past_frame_embeds).to(dtype=inputs_embeds.dtype)
                     inputs_embeds = self.fill_special_token_embeddings(
                         inputs_embeds,

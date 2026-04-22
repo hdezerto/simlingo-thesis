@@ -42,6 +42,11 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
         for key, value in cfg.items():
             setattr(self, key, value)
 
+        # `history_stride=1` means adjacent saved frames; larger values subsample
+        # the history while keeping the current frame and future targets fixed.
+        self.history_stride = max(1, int(getattr(self, "history_stride", 1)))
+        self.history_span = (self.hist_len - 1) * self.history_stride
+
         self.tfs = image_augmenter(prob=self.img_augmentation_prob)
 
         filter_infractions_per_route = True
@@ -278,13 +283,15 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
 
             num_seq = len(os.listdir(route_dir + f'/{self.rgb_folder}'))
 
-            for seq in range(self.skip_first_n_frames, num_seq - self.pred_len - self.hist_len - 1):
+            max_seq = num_seq - self.pred_len - self.history_span - 2
+            for seq in range(self.skip_first_n_frames, max_seq):
                 image = []
                 box = []
                 measurement = []
                 augment_exist = False
 
-                measurement_file = route_dir + '/measurements' + f'/{(seq + self.hist_len-1):04}.json.gz'
+                current_idx = seq + self.history_span
+                measurement_file = route_dir + '/measurements' + f'/{current_idx:04}.json.gz'
 
                 if evaluation and measurement_file not in self.all_eval_samples:
                     continue
@@ -314,8 +321,9 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
                 skip = False
                 augment_exist = True
                 for idx in range(self.hist_len):
-                    image.append(route_dir +  f'/{self.rgb_folder}' + (f'/{(seq + idx):04}.jpg'))
-                    box.append(route_dir + '/boxes' + (f'/{(seq + idx):04}.json.gz'))
+                    frame_idx = seq + idx * self.history_stride
+                    image.append(route_dir +  f'/{self.rgb_folder}' + (f'/{frame_idx:04}.jpg'))
+                    box.append(route_dir + '/boxes' + (f'/{frame_idx:04}.json.gz'))
 
                 if skip:
                     if "file_not_found" not in fail_reasons:
@@ -379,18 +387,19 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
 
         # Since we load measurements for future time steps, we load and store them separately
         for i in range(self.hist_len):
-            measurement_file = str(measurements[0], encoding='utf-8') + (f'/{(sample_start + i):04}.json.gz')
+            measurement_idx = sample_start + i * self.history_stride
+            measurement_file = str(measurements[0], encoding='utf-8') + (f'/{measurement_idx:04}.json.gz')
 
             with gzip.open(measurement_file, 'rt') as f1:
                 measurements_i = ujson.load(f1)
             loaded_measurements.append(measurements_i)
 
-        end = self.pred_len + self.hist_len
-        start = self.hist_len
+        current_idx = sample_start + self.history_span
 
-        for i in range(start, end):
+        for future_offset in range(1, self.pred_len + 1):
             try:
-                measurement_file = str(measurements[0], encoding='utf-8') + (f'/{(sample_start + i):04}.json.gz')
+                measurement_idx = current_idx + future_offset
+                measurement_file = str(measurements[0], encoding='utf-8') + (f'/{measurement_idx:04}.json.gz')
 
                 with gzip.open(measurement_file, 'rt') as f1:
                     measurements_i = ujson.load(f1)
@@ -400,7 +409,7 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
                 print(f"File not found: {measurement_file}")
                 loaded_measurements.append(loaded_measurements[-1])
         current_measurement = loaded_measurements[self.hist_len - 1]
-        measurement_file_current = str(measurements[0], encoding='utf-8') + (f'/{(sample_start + start-1):04}.json.gz')
+        measurement_file_current = str(measurements[0], encoding='utf-8') + (f'/{current_idx:04}.json.gz')
         return loaded_measurements, current_measurement, measurement_file_current
 
     def load_waypoints(self, data, loaded_measurements, aug_translation=0.0, aug_rotation=0.0):

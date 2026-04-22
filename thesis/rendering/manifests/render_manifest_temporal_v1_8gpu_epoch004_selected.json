@@ -1,0 +1,58 @@
+{
+  "defaults": {
+    "agent": "simlingo_temporal_v1_8gpu_epoch004_render_selected",
+    "benchmark": "bench2drive",
+    "out_root": "${BASE_DIR}/eval_results/Bench2Drive",
+    "repo_root": "${REPO_DIR}",
+    "carla_root": "${CARLA_ROOT}",
+    "agent_file": "${REPO_DIR}/team_code/agent_simlingo.py",
+    "checkpoint": "${REPO_DIR}/outputs/2026_04_19_09_03_16_temporal_qformer_v1_8gpu/checkpoints/epoch=004_fp32/pytorch_model.bin",
+    "routes_file": "${REPO_DIR}/leaderboard/data/bench2drive220.xml",
+    "partition": "berzelius",
+    "cpus_per_task": 4,
+    "mem_gb": 24,
+    "time": "03:00:00",
+    "mail_user": "hugo.afonso.dezerto@gmail.com",
+    "mail_type": "END,FAIL",
+    "gpu_rank": 0,
+    "fps": 20,
+    "width": 1280,
+    "height": 720,
+    "debug_viz": true,
+    "debug_stride": 5,
+    "debug_save_language": true
+  },
+  "meta": {
+    "source": "Temporal v1 8gpu epoch-4 selected failure cases",
+    "seed_assumption": "All requested routes rendered with seed 1"
+  },
+  "cases": [
+    {
+      "route_id": "11755",
+      "seed": 1,
+      "scenario": "EnterActorFlow_1",
+      "_comment": "Group: EnterActorFlow_1"
+    },
+    {
+      "route_id": "3936",
+      "seed": 1,
+      "scenario": "SignalizedJunctionLeftTurn_1",
+      "_comment": "Group: SignalizedJunctionLeftTurn_1"
+    },
+    {
+      "route_id": "4183",
+      "seed": 1,
+      "scenario": "SignalizedJunctionLeftTurn_1"
+    },
+    {
+      "route_id": "4468",
+      "seed": 1,
+      "scenario": "SignalizedJunctionLeftTurn_1"
+    },
+    {
+      "route_id": "4683",
+      "seed": 1,
+      "scenario": "SignalizedJunctionLeftTurn_1"
+    }
+  ]
+}
