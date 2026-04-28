@@ -1,12 +1,12 @@
 {
   "defaults": {
-    "agent": "simlingo_temporal_v1_8gpu_epoch004_render_selected",
+    "agent": "simlingo_temporal_v3_gate0_8gpu_epoch011_render_selected",
     "benchmark": "bench2drive",
     "out_root": "${BASE_DIR}/eval_results/Bench2Drive",
     "repo_root": "${REPO_DIR}",
     "carla_root": "${CARLA_ROOT}",
     "agent_file": "${REPO_DIR}/team_code/agent_simlingo.py",
-    "checkpoint": "${REPO_DIR}/outputs/2026_04_19_09_03_16_temporal_qformer_v1_8gpu/checkpoints/epoch=004_fp32/pytorch_model.bin",
+    "checkpoint": "${REPO_DIR}/outputs/2026_04_27_02_25_36_temporal_qformer_v3_gate0_8gpu/checkpoints/epoch=011_fp32/pytorch_model.bin",
     "routes_file": "${REPO_DIR}/leaderboard/data/bench2drive220.xml",
     "partition": "berzelius",
     "cpus_per_task": 4,
@@ -23,7 +23,8 @@
     "debug_save_language": true
   },
   "meta": {
-    "source": "Temporal v1 8gpu epoch-4 selected failure cases",
+    "source": "Temporal v3 gate0 8gpu epoch-11 selected failure cases",
+    "based_on": "thesis/rendering/manifests/render_manifest_temporal_v2_8gpu_epoch005_selected.json",
     "seed_assumption": "All requested routes rendered with seed 1"
   },
   "cases": [

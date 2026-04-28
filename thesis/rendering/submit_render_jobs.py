@@ -30,7 +30,28 @@ def _truthy(value):
   return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _has_reusable_frames(frames_dir: Path):
+def _has_completed_result(result_file: Path):
+  if not result_file.exists():
+    return False
+  try:
+    with result_file.open("r", encoding="utf-8") as f:
+      result = json.load(f)
+  except (json.JSONDecodeError, OSError):
+    return False
+
+  progress = result.get("_checkpoint", {}).get("progress", [])
+  return (
+    isinstance(progress, list)
+    and len(progress) >= 2
+    and progress[1] > 0
+    and progress[0] >= progress[1]
+  )
+
+
+def _has_reusable_frames(frames_dir: Path, result_file: Path):
+  if not _has_completed_result(result_file):
+    return False
+
   rgb_dir = frames_dir / "rgb_front"
   left_dir = frames_dir / "rgb_left"
   right_dir = frames_dir / "rgb_right"
@@ -148,6 +169,12 @@ def slurm_text(cfg, route_id, seed, p, render_only=False):
   partition = cfg.get("cpu_partition", "berzelius-cpu") if render_only else cfg["partition"]
   gres_line = "" if render_only else "#SBATCH --gres=gpu:1"
   max_attempts = int(cfg.get("eval_max_attempts", 2))
+  case_index = int(cfg.get("_case_index", 0))
+  port_stride = int(cfg.get("port_stride", 100))
+  world_port_start = min(12000 + case_index * port_stride, 19999)
+  world_port_end = min(world_port_start + port_stride - 1, 19999)
+  tm_port_start = min(32000 + case_index * port_stride, 39999)
+  tm_port_end = min(tm_port_start + port_stride - 1, 39999)
 
   return f'''#!/bin/bash
 #SBATCH --job-name=render_{route_id}_s{seed}
@@ -204,6 +231,7 @@ DEBUG_VIZ={1 if _truthy(cfg.get("debug_viz", False)) else 0}
 DEBUG_STRIDE={int(cfg.get("debug_stride", 5))}
 DEBUG_SAVE_LANGUAGE={1 if _truthy(cfg.get("debug_save_language", True)) else 0}
 FORCE_RENDER_ONLY={1 if render_only else 0}
+REUSE_EXISTING_FRAMES={1 if render_only else 0}
 log "Case route={route_id} seed={seed}"
 log "Frame render dir: $FRAME_DIR"
 log "MP4 output: $MP4_OUT"
@@ -245,11 +273,17 @@ if [[ "$DEBUG_VIZ" -eq 1 ]]; then
       echo "Render-only mode requested but reusable multiview frames/meta were not found"
       exit 1
     fi
-  elif [[ "$FRAME_COUNT_EXISTING" -gt 0 && "$LEFT_COUNT_EXISTING" -gt 0 && "$RIGHT_COUNT_EXISTING" -gt 0 && "$REAR_COUNT_EXISTING" -gt 0 && "$META_COUNT_EXISTING" -gt 0 ]]; then
+  elif [[ "$REUSE_EXISTING_FRAMES" -eq 1 && "$FRAME_COUNT_EXISTING" -gt 0 && "$LEFT_COUNT_EXISTING" -gt 0 && "$RIGHT_COUNT_EXISTING" -gt 0 && "$REAR_COUNT_EXISTING" -gt 0 && "$META_COUNT_EXISTING" -gt 0 ]]; then
     EVAL_OK=1
     SKIP_EVAL=1
     log "Debug render enabled: reusing existing multiview frames/meta (front=$FRAME_COUNT_EXISTING left=$LEFT_COUNT_EXISTING right=$RIGHT_COUNT_EXISTING rear=$REAR_COUNT_EXISTING meta=$META_COUNT_EXISTING), skipping evaluator"
   else
+    if [[ "$FRAME_COUNT_EXISTING" -gt 0 || "$LEFT_COUNT_EXISTING" -gt 0 || "$RIGHT_COUNT_EXISTING" -gt 0 || "$REAR_COUNT_EXISTING" -gt 0 || "$META_COUNT_EXISTING" -gt 0 ]]; then
+      log "Ignoring incomplete previous frames/meta, cleaning $FRAME_DIR before evaluator rerun"
+      rm -rf "$FRAME_DIR"
+      mkdir -p "$FRAME_DIR/rgb_front" "$FRAME_DIR/rgb_left" "$FRAME_DIR/rgb_right" "$FRAME_DIR/rgb_rear" "$FRAME_DIR/meta"
+      export FRAME_RENDER_DIR="$FRAME_DIR"
+    fi
     EVAL_OK=0
     SKIP_EVAL=0
     log "Debug render enabled: no reusable multiview frames found, evaluator will run"
@@ -264,11 +298,11 @@ fi
 if [[ "$SKIP_EVAL" -eq 0 ]]; then
   log "Starting evaluator run to generate frame sequence"
   for ATTEMPT in $(seq 1 {max_attempts}); do
-    EVAL_WORLD_PORT=$(find_free_port 12000 19999) || {{
+    EVAL_WORLD_PORT=$(find_free_port {world_port_start} {world_port_end}) || {{
       echo "Could not find a free evaluation world port"
       exit 1
     }}
-    EVAL_TM_PORT=$(find_free_port 32000 39999) || {{
+    EVAL_TM_PORT=$(find_free_port {tm_port_start} {tm_port_end}) || {{
       echo "Could not find a free traffic manager port"
       exit 1
     }}
@@ -353,17 +387,18 @@ def main():
     print(f"Loaded manifest: {manifest_path}")
     print(f"Total cases: {len(cases)}")
 
-    for case in cases:
+    for idx, case in enumerate(cases):
         route_id = str(case["route_id"])
         seed = int(case["seed"])
 
         print(f"Preparing case route={route_id} seed={seed}")
 
         cfg = _build_case_cfg(defaults, case)
+        cfg["_case_index"] = idx
 
         p = build_paths(cfg, route_id, seed)
         debug_viz_enabled = _truthy(cfg.get("debug_viz", False))
-        render_only = debug_viz_enabled and _has_reusable_frames(p["frames_dir"])
+        render_only = debug_viz_enabled and _has_reusable_frames(p["frames_dir"], p["result_file"])
         _write_case_slurm_script(cfg, route_id, seed, p, render_only)
 
         if render_only:
