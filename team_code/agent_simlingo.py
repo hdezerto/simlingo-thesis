@@ -94,18 +94,41 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
 
         raise FileNotFoundError(f"Could not find .hydra/config.yaml for checkpoint: {checkpoint_path}")
 
-    def _append_and_get_frame_history(self, current_frame: np.ndarray) -> np.ndarray:
-        self.image_buffer.append(current_frame.copy())
-        frames = list(self.image_buffer)
-        sampled_frames = []
-        # Keep the current frame live every step, but sample older frames at the
-        # configured stride so inference matches the temporal spacing seen in training.
+    def _preprocess_internvl_frame(self, frame: np.ndarray, transform):
+        image = Image.fromarray(frame.transpose(1, 2, 0))
+        images = dynamic_preprocess(
+            image,
+            image_size=448,
+            use_thumbnail=self.cfg.model.vision_model.use_global_img,
+            max_num=self.NUM_IMAGE_PATCHES,
+        )
+        pixel_values = torch.stack([transform(img) for img in images])
+        return pixel_values, [image.size[1], image.size[0]]
+
+    def _encode_processed_frames(self, processed_frames: torch.Tensor) -> torch.Tensor:
+        image_encoder = self.model.vision_model.image_encoder
+        pixel_values = processed_frames.to(
+            self.device,
+            dtype=self.image_tensor_dtype,
+        ).unsqueeze(1)
+        with torch.autocast(device_type=self.device.type, dtype=torch.float16, enabled=self.device.type == "cuda"):
+            frame_features = image_encoder.extract_frame_features(
+                pixel_values,
+                self.model.language_model.hidden_size,
+            )
+        return frame_features[:, 0].detach()
+
+    def _append_and_get_feature_history(self, current_frame_feature: torch.Tensor) -> torch.Tensor:
+        self.frame_feature_buffer.append((max(self.step, 0), current_frame_feature.detach()))
+        features = list(self.frame_feature_buffer)
+        selected_features = []
         for history_offset in range(self.T - 1, -1, -1):
-            frame_idx = len(frames) - 1 - history_offset * self.temporal_inference_stride
-            if frame_idx < 0:
-                frame_idx = 0
-            sampled_frames.append(frames[frame_idx].copy())
-        return np.stack(sampled_frames, axis=0)
+            feature_idx = len(features) - 1 - history_offset * self.temporal_inference_stride
+            if feature_idx < 0:
+                feature_idx = 0
+            _, frame_feature = features[feature_idx]
+            selected_features.append(frame_feature)
+        return torch.stack(selected_features).unsqueeze(0)
 
     def _get_image_tensor_dtype(self) -> torch.dtype:
         image_encoder = getattr(getattr(self.model, "vision_model", None), "image_encoder", None)
@@ -180,8 +203,6 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
 
         self.turn_controller = LateralPIDController(inference_mode=False)
 
-        self.image_buffer = deque(maxlen=1)
-
         # config
         self.carla_frame_rate = 1.0 / 20.0  # CARLA frame rate in milliseconds
         self.data_save_freq = 5
@@ -214,12 +235,13 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
             1,
             int(os.environ.get("TEMPORAL_INFERENCE_STRIDE", str(default_temporal_inference_stride))),
         )
-        self.image_buffer = deque(
-            maxlen=1 + max(0, self.T - 1) * self.temporal_inference_stride
-        )
+        temporal_buffer_len = 1 + max(0, self.T - 1) * self.temporal_inference_stride
+        self.frame_feature_buffer = deque(maxlen=temporal_buffer_len)
+        self.frame_feature_buffer_maxlen = temporal_buffer_len
         self.num_image_tokens_per_patch = get_num_image_tokens_per_patch(self.cfg.model.vision_model.variant)
         self.NUM_IMAGE_PATCHES = 2
         self.num_image_tokens_total = self.num_image_tokens_per_patch * self.NUM_IMAGE_PATCHES
+        self.image_transform = build_transform(input_size=448)
     
         processor = AutoProcessor.from_pretrained(cfg.model.vision_model.variant, trust_remote_code=True)
         if 'tokenizer' in processor.__dict__:
@@ -242,6 +264,21 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
         else:
             state_dict = torch.load(self.config_path, map_location="cpu")
         self.model.load_state_dict(state_dict)
+        self.model.eval()
+        self.image_tensor_dtype = self._get_image_tensor_dtype()
+        self.camera_intrinsics_tensor = torch.repeat_interleave(
+            get_camera_intrinsics(448, 448, 110).unsqueeze(0),
+            1,
+            dim=0,
+        ).view(1, 3, 3).float().to(self.device)
+        self.camera_extrinsics_tensor = torch.repeat_interleave(
+            get_camera_extrinsics().unsqueeze(0),
+            1,
+            dim=0,
+        ).view(1, 4, 4).float().to(self.device)
+        print(
+            f"Temporal feature buffer enabled (max_frames={self.frame_feature_buffer_maxlen})"
+        )
         if self.config.eval_route_as == -1:
             self.config.eval_route_as = self.model.route_as
         self.iter = self.config_path.split("epoch=")[-1].split("/")[0]
@@ -492,30 +529,23 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
 
         rgb = np.array(rgb)
         current_frame = rgb[0]
-        rgbs = self._append_and_get_frame_history(current_frame)
         image_sizes = None
+        precomputed_frame_features = None
         
         if 'internvl2' in self.cfg.model.vision_model.variant.lower():
-            T, C, H, W = rgbs.shape
-            transform = build_transform(input_size=448)
-            images_processed_tmp = []
-            images_sizes_tmp = []
-            
-            for frame in rgbs:
-                image = Image.fromarray(frame.transpose(1, 2, 0))
-                images = dynamic_preprocess(
-                    image,
-                    image_size=448,
-                    use_thumbnail=self.cfg.model.vision_model.use_global_img,
-                    max_num=self.NUM_IMAGE_PATCHES,
-                )
-                pixel_values = [transform(img) for img in images]
-                pixel_values = torch.stack(pixel_values)
-                images_processed_tmp.append(pixel_values)
-                images_sizes_tmp.append([image.size[1], image.size[0]])
+            current_pixel_values, current_image_size = self._preprocess_internvl_frame(
+                current_frame,
+                self.image_transform,
+            )
 
-            processed_image = torch.stack(images_processed_tmp).unsqueeze(0)
-            image_sizes = torch.tensor(images_sizes_tmp).unsqueeze(0)
+            current_frame_feature = self._encode_processed_frames(
+                current_pixel_values.unsqueeze(0)
+            )[0]
+            precomputed_frame_features = self._append_and_get_feature_history(
+                current_frame_feature
+            )
+            processed_image = current_pixel_values.unsqueeze(0).unsqueeze(0)
+            image_sizes = torch.tensor([current_image_size]).unsqueeze(0)
             num_patches = processed_image.shape[2]
             new_height = processed_image.shape[4]
             new_width = processed_image.shape[5]
@@ -666,9 +696,14 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
 
         result['speed'] = torch.FloatTensor([speed]).unsqueeze(0).to(self.device, dtype=torch.float32)
 
-        B, T, num_patches, C, H, W = processed_image.shape
+        B, image_T, num_patches, C, H, W = processed_image.shape
+        temporal_T = (
+            precomputed_frame_features.shape[1]
+            if precomputed_frame_features is not None
+            else image_T
+        )
         assert B == 1
-        assert T == self.T
+        assert temporal_T == self.T
         assert C == 3
 
         speed = round(speed, 1)
@@ -720,15 +755,16 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
 
         self.DrivingInput["camera_images"] = processed_image.to(
             self.device,
-            dtype=self._get_image_tensor_dtype(),
+            dtype=self.image_tensor_dtype,
         )
         self.DrivingInput["image_sizes"] = image_sizes
-        self.DrivingInput["camera_intrinsics"] = torch.repeat_interleave(get_camera_intrinsics(W, H, 110).unsqueeze(0), 1, dim=0).view(1, 3, 3).float().to(self.device)
-        self.DrivingInput["camera_extrinsics"] = torch.repeat_interleave(get_camera_extrinsics().unsqueeze(0), 1, dim=0).view(1, 4, 4).float().to(self.device)
+        self.DrivingInput["camera_intrinsics"] = self.camera_intrinsics_tensor
+        self.DrivingInput["camera_extrinsics"] = self.camera_extrinsics_tensor
         self.DrivingInput["vehicle_speed"] = result['speed']
         self.DrivingInput["target_point"] = result['target_point'].to(self.device)
         self.DrivingInput["prompt"] = prompt_languagelabel
         self.DrivingInput["prompt_inference"] = prompt_question_languagelabel
+        self.DrivingInput["precomputed_frame_features"] = precomputed_frame_features
 
         return result
 

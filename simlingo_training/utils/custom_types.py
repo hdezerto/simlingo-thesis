@@ -49,6 +49,7 @@ class DrivingInput(NamedTuple):
     target_point: torch.Tensor  # [B, 2] float32
     prompt: LanguageLabel
     prompt_inference: LanguageLabel
+    precomputed_frame_features: Optional[torch.Tensor] = None  # [B, T, P, D], inference-only
 
 class DrivingLabel(NamedTuple):
     waypoints: Tensor  # [B, F, 2] 11 future waypoints 0.2s apart

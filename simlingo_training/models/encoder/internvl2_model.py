@@ -101,6 +101,7 @@ class LingoInternVLModel(nn.Module):
         placeholder_values: Optional[List[dict]] = None,
         wp_encoder: Optional[nn.Module] = None,
         temporal_encoder: Optional[nn.Module] = None,
+        precomputed_frame_features: Optional[torch.FloatTensor] = None,
     ):
         
         if 'tokenizer' in self.processor.__dict__:
@@ -128,7 +129,7 @@ class LingoInternVLModel(nn.Module):
             # inputs_embeds = language_model.model.get_input_embeddings()(for_inputs_embeds_ids)
             inputs_embeds = adaptor_dict['language_inputs']
             input_ids = adaptor_dict['language__ids']
-            
+
             # 2a replace placeholder
             inputs_embeds = self.replace_waypoint_placeholders(
                 inputs_embeds,
@@ -137,11 +138,17 @@ class LingoInternVLModel(nn.Module):
                 wp_encoder,
             )
 
-            # 2. Merge text and images
-            if pixel_values is not None and input_ids.shape[1] != 1 and pixel_values.size(0) > 0:
+            # 2. Merge text and images. Online inference may pass cached frame
+            # features so repeated history frames do not need another vision pass.
+            if (
+                (precomputed_frame_features is not None)
+                or (pixel_values is not None and pixel_values.size(0) > 0)
+            ) and input_ids.shape[1] != 1:
                 _, _, C_embed = inputs_embeds.shape
-                BS, T, NP, C, H, W = pixel_values.shape
-                frame_features = self.extract_frame_features(pixel_values, C_embed)
+                if precomputed_frame_features is not None:
+                    frame_features = precomputed_frame_features
+                else:
+                    frame_features = self.extract_frame_features(pixel_values, C_embed)
                 current_frame_embeds = frame_features[:, -1].to(dtype=inputs_embeds.dtype)
                 inputs_embeds = self.fill_special_token_embeddings(
                     inputs_embeds,
@@ -154,7 +161,14 @@ class LingoInternVLModel(nn.Module):
                 if temporal_encoder is not None:
                     temporal_dtype = next(temporal_encoder.parameters()).dtype
                     past_frame_embeds = frame_features[:, :-1].to(dtype=temporal_dtype)
-                    temporal_embeds = temporal_encoder(past_frame_embeds).to(dtype=inputs_embeds.dtype)
+                    if getattr(temporal_encoder, "uses_current_frame", False):
+                        current_frame_embeds_for_temporal = frame_features[:, -1].to(dtype=temporal_dtype)
+                        temporal_embeds = temporal_encoder(
+                            past_frame_embeds,
+                            current_frame_tokens=current_frame_embeds_for_temporal,
+                        ).to(dtype=inputs_embeds.dtype)
+                    else:
+                        temporal_embeds = temporal_encoder(past_frame_embeds).to(dtype=inputs_embeds.dtype)
                     inputs_embeds = self.fill_special_token_embeddings(
                         inputs_embeds,
                         input_ids,
@@ -166,12 +180,11 @@ class LingoInternVLModel(nn.Module):
             elif pixel_values is not None and input_ids.shape[1] != 1 and pixel_values.size(0) == 0:
                 # there are no images
                 pass
-            
+
             adaptor_dict['language_inputs'] = inputs_embeds
             start_id = adaptor_dict['perm'][:,0]
-            
+
             for b, i in enumerate(start_id):
                 adaptor_dict['inputs'][b][:len(adaptor_dict['language_inputs'][b])-i] = inputs_embeds[b][i:]
-            
+
         return adaptor_dict
-            

@@ -144,6 +144,7 @@ class DrivingModel(pl.LightningModule):
                     placeholder_values = driving_input.prompt_inference.placeholder_values,
                     wp_encoder = self.wp_encoder,
                     temporal_encoder = self.temporal_encoder,
+                    precomputed_frame_features = driving_input.precomputed_frame_features,
                 )
             
             input_embeds_all = adaptor_dict["language_inputs"]
@@ -225,6 +226,7 @@ class DrivingModel(pl.LightningModule):
             placeholder_values = driving_input.prompt.placeholder_values,
             wp_encoder = self.wp_encoder,
             temporal_encoder = self.temporal_encoder,
+            precomputed_frame_features = driving_input.precomputed_frame_features,
         )
 
         position_ids = None
