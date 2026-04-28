@@ -1,0 +1,8 @@
+{
+  "search.followSymlinks": false,
+  "files.watcherExclude": {
+    "**/database/**": true,
+    "outputs/**": true,
+    "pretrained/**": true
+  }
+}

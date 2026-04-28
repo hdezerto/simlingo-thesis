@@ -34,6 +34,36 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
     Base class for the dataset.
     """
 
+    def _resolve_root_path(self, path_value):
+        path_obj = Path(path_value).expanduser()
+        if path_obj.is_absolute():
+            return path_obj
+        return self.repo_path / path_obj
+
+    def _resolve_dataset_reference(self, reference):
+        if isinstance(reference, Path):
+            reference = str(reference)
+
+        normalized = str(reference).replace("\\", "/")
+        repo_prefix = str(self.repo_path).replace("\\", "/").rstrip("/")
+        if normalized.startswith(repo_prefix + "/"):
+            normalized = normalized[len(repo_prefix) + 1:]
+        legacy_prefixes = (
+            "database/simlingo_v2_2025_01_10",
+            "database/simlingo",
+        )
+
+        for prefix in legacy_prefixes:
+            if normalized.startswith(prefix):
+                suffix = normalized[len(prefix):].lstrip("/")
+                return self.data_root / suffix
+            marker = f"/{prefix}"
+            if marker in normalized:
+                suffix = normalized.split(marker, 1)[1].lstrip("/")
+                return self.data_root / suffix
+
+        return self._resolve_root_path(normalized)
+
     def __init__(self,
             dreamer = False,
             evaluation = False,
@@ -70,6 +100,9 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
         fail_reasons = {}
 
         repo_path = get_original_cwd()
+        self.repo_path = Path(repo_path)
+        self.data_root = self._resolve_root_path(self.data_path)
+        self.bucket_root = self._resolve_root_path(self.bucket_path)
         
         # load templates
         template_file = f"{repo_path}/data/augmented_templates/commentary_augmented.json"
@@ -106,7 +139,8 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
 
                         for answer in value.keys():
                             for sample in value[answer]:
-                                sample = repo_path + '/' + sample.replace('vqa', 'measurements').replace('drivelm', 'data')
+                                sample = sample.replace('vqa', 'measurements').replace('drivelm', 'data')
+                                sample = str(self._resolve_dataset_reference(sample))
                                 self.all_eval_samples.append(sample)
                                 
                                 if sample not in self.all_eval_samples_dict:
@@ -115,7 +149,8 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
                                     self.all_eval_samples_dict[sample].append((key, answer))
                     else:
                         for sample in value:
-                            sample = repo_path + '/' + sample.replace('commentary/simlingo', 'data/simlingo').replace('commentary', 'measurements')
+                            sample = sample.replace('commentary/simlingo', 'data/simlingo').replace('commentary', 'measurements')
+                            sample = str(self._resolve_dataset_reference(sample))
                             self.all_eval_samples.append(sample)
 
 
@@ -146,7 +181,7 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
 
 
         if not self.bucket_name == "all":
-            with open(f"{repo_path}/" + self.bucket_path + '/buckets_paths.pkl', 'rb') as f:
+            with open(self.bucket_root / 'buckets_paths.pkl', 'rb') as f:
                 bucket_dict = pkl.load(f)
 
             bucket_run_ids = None
@@ -180,27 +215,25 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
             run_id_dict = {}
             if bucket_run_ids is not None:
                 for run_id in bucket_run_ids:
-                    run_id = run_id.replace('database/simlingo_v2_2025_01_10', self.bucket_path)
-                    run_id_path = Path(run_id)
+                    run_id_path = self._resolve_dataset_reference(run_id)
                     run_id_parent = run_id_path.parent
                     run_id_name = run_id_path.name
                     run_id_absolut = str(run_id_parent)
-                    run_id_absolut = f"{repo_path}/{str(run_id_parent)}"
                     if run_id_absolut not in run_id_dict:
                         run_id_dict[run_id_absolut] = [run_id_name]
                     else:
                         run_id_dict[run_id_absolut].append(run_id_name)
 
 
-        route_dirs = glob.glob(f"{repo_path}/" + self.data_path + '/data/simlingo/*/*/*/Town*')
-        print(f'Found {len(route_dirs)} routes in {repo_path + self.data_path}')
+        route_dirs = glob.glob(str(self.data_root / 'data/simlingo/*/*/*/Town*'))
+        print(f'Found {len(route_dirs)} routes in {self.data_root}')
         
         if not self.use_old_towns:
             route_dirs = [route_dir for route_dir in route_dirs if 'lb1_split' not in route_dir]
-            print(f'Found {len(route_dirs)} routes in {repo_path + self.data_path} after filtering out old towns')
+            print(f'Found {len(route_dirs)} routes in {self.data_root} after filtering out old towns')
         elif self.use_only_old_towns or self.bucket_name == "old_towns":
             route_dirs = [route_dir for route_dir in route_dirs if 'lb1_split' in route_dir]
-            print(f'Found {len(route_dirs)} routes in {repo_path + self.data_path} after filtering out non old towns')
+            print(f'Found {len(route_dirs)} routes in {self.data_root} after filtering out non old towns')
         
 
         random.shuffle(route_dirs)
@@ -367,7 +400,7 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
 
         self.sample_start = np.array(self.sample_start)
         # if rank == 0:
-        print(f'[{self.split} samples]: Loading {len(self.images)} images from {self.data_path} for bucket {self.bucket_name}')
+        print(f'[{self.split} samples]: Loading {len(self.images)} images from {self.data_root} for bucket {self.bucket_name}')
         print('Total amount of routes:', total_routes)
         print('Crashed routes:', crashed_routes)
         print('Perfect routes:', perfect_routes)

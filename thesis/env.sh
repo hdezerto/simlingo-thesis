@@ -21,6 +21,12 @@ export EVAL_AGENT_NAME="${EVAL_AGENT_NAME:-${EVAL_RUN_NAME}}"
 export BENCH2DRIVE_ROOT="${BENCH2DRIVE_ROOT:-${EVAL_OUT_ROOT}/${EVAL_AGENT_NAME}/bench2drive}"
 export LOG_ROOT="${LOG_ROOT:-${BASE_DIR}/logs}"
 export MODEL_CKPT="${MODEL_CKPT:-${CHECKPOINT_ROOT}/simlingo_pretrained/simlingo/checkpoints/epoch=013.ckpt/pytorch_model.pt}"
+export SIMLINGO_DATA_ROOT="${SIMLINGO_DATA_ROOT:-${BASE_DIR}/database/simlingo}"
+export SIMLINGO_BUCKET_ROOT="${SIMLINGO_BUCKET_ROOT:-${BASE_DIR}/database/bucketsv2_simlingo}"
+export SIMLINGO_ARCHIVE_ROOT="${SIMLINGO_ARCHIVE_ROOT:-${BASE_DIR}/database_archives/simlingo}"
+export SIMLINGO_ARCHIVE_PARTS="${SIMLINGO_ARCHIVE_PARTS:-8}"
+export SIMLINGO_SCRATCH_BASE="${SIMLINGO_SCRATCH_BASE:-${SNIC_TMP:-/scratch/local}/${USERNAME}}"
+export SIMLINGO_STAGE_JOBS="${SIMLINGO_STAGE_JOBS:-8}"
 
 # Slurm defaults
 export SLURM_ACCOUNT="${SLURM_ACCOUNT:-berzelius-2025-435}"
