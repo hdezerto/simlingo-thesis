@@ -24,7 +24,7 @@
   },
   "meta": {
     "source": "Temporal v2 8gpu epoch-13 final checkpoint selected failure cases",
-    "based_on": "thesis/rendering/manifests/render_manifest_temporal_v2_8gpu_epoch005_selected.json",
+    "based_on": "selected failure route set",
     "seed_assumption": "All requested routes rendered with seed 1"
   },
   "cases": [

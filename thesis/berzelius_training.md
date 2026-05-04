@@ -1,22 +1,37 @@
 # SimLingo Temporal Training on Berzelius
 
-Compact runbook for reproducing the current temporal Q-former training setup.
+Concise runbook for the temporal SimLingo experiments on Berzelius.
 
-## Environment
+This document is the canonical notes file on `temporal-module`.
 
-For long-running interactive work on this branch, use one tmux session and reuse it:
+## 1. Branches
+
+- `temporal-module`: main temporal branch. It contains the Q-former experiments, scratch dataset staging, and rendering/inference fixes.
+- `temporal-delta-feature`: separate branch for the DeltaFlow-inspired feature-delta experiment. Keep the delta implementation there unless deliberately merging it later.
+
+## 2. Environment
+
+Use one persistent tmux session for interactive work:
 
 ```bash
-tmux new -s temporal
+tmux new -As temporal
 ```
 
-If it already exists:
+If you disconnect from Berzelius, attach to the same session again:
 
 ```bash
 tmux attach -t temporal
 ```
 
-Inside that tmux session, load the environment:
+Check existing tmux sessions:
+
+```bash
+tmux ls
+```
+
+Detach without stopping the session with `Ctrl-b`, then `d`.
+
+Load the environment inside tmux:
 
 ```bash
 export USERNAME="${USERNAME:-${USER}}"
@@ -27,19 +42,18 @@ conda activate simlingo
 source thesis/env.sh
 ```
 
-Unless noted otherwise, the remaining commands assume you are still in this `temporal` tmux session with that environment loaded.
+Useful variables from `thesis/env.sh`:
 
-Key variables from `thesis/env.sh`:
 - `BASE_DIR=/proj/${PROJECT_ID}/users/${USERNAME}`
 - `REPO_DIR=${BASE_DIR}/simlingo-thesis`
+- `LOG_ROOT=${BASE_DIR}/logs`
 - `EVAL_OUT_ROOT=${BASE_DIR}/eval_results/Bench2Drive`
 - `EVAL_RUN_NAME=simlingo`
 - `BENCH2DRIVE_ROOT=${EVAL_OUT_ROOT}/${EVAL_RUN_NAME}/bench2drive`
-- `LOG_ROOT=${BASE_DIR}/logs`
 - `MODEL_CKPT=${BASE_DIR}/checkpoints/simlingo_pretrained/simlingo/checkpoints/epoch=013.ckpt/pytorch_model.pt`
 - `SLURM_ACCOUNT=berzelius-2025-435`
 
-Quick checks:
+Quick check:
 
 ```bash
 echo "$REPO_DIR"
@@ -48,63 +62,120 @@ echo "$SLURM_ACCOUNT"
 test -f "$MODEL_CKPT" && echo "checkpoint ok"
 ```
 
-## Dataset Download
+## 3. Dataset Archive Workflow
 
-Download the released dataset from Hugging Face with Git LFS:
+The recommended Berzelius dataset format is an archive set on `/proj`, staged to
+node-local scratch at job start. This avoids keeping millions of extracted files
+under the project directory.
 
-```bash
-cd "${BASE_DIR}"
-mkdir -p database
-cd database
-
-git lfs install
-GIT_LFS_SKIP_SMUDGE=1 git clone https://huggingface.co/datasets/RenzKa/simlingo simlingo_hf
-cd simlingo_hf
-git lfs pull
-```
-
-## Extract Dataset And Buckets
+Final archive location:
 
 ```bash
-cd "${BASE_DIR}/database"
-mkdir -p simlingo
-mkdir -p bucketsv2_simlingo
-cp simlingo_hf/buckets_paths.pkl bucketsv2_simlingo/
-
-cd simlingo_hf
-for f in *.tar.gz; do
-  echo "Extracting $f"
-  tar -xzf "$f" -C "${BASE_DIR}/database/simlingo"
-done
+${SIMLINGO_ARCHIVE_ROOT}
 ```
 
-Expected outputs:
-- `${BASE_DIR}/database/simlingo/data/simlingo`
-- `${BASE_DIR}/database/bucketsv2_simlingo/buckets_paths.pkl`
+Expected archive files:
 
-## Create Repo Symlinks
+- `simlingo_part_*.tar`
+- `dataset_archives.txt`
+- `dataset_metadata.env`
+- `stage_parent_dirs.txt`
+- `bucketsv2_simlingo.tar`
 
-The training scripts expect repo-local `database/` symlinks:
+The temporary extracted dataset is used only while building the archive set. Do
+not keep the full extracted dataset in `${BASE_DIR}/database/simlingo`.
+
+### Build Archives
+
+Use a node with enough scratch space:
 
 ```bash
 cd "${REPO_DIR}"
-mkdir -p database
-ln -sfn "${BASE_DIR}/database/simlingo" database/simlingo
-ln -sfn "${BASE_DIR}/database/bucketsv2_simlingo" database/bucketsv2_simlingo
+source thesis/env.sh
+
+export HF_DATASET_ROOT="${BASE_DIR}/dataset_sources/simlingo_hf"
+export SIMLINGO_BUILD_ROOT="${SNIC_TMP:-/scratch/local}/${USERNAME}/simlingo_archive_build"
+export SIMLINGO_DATA_ROOT="${SIMLINGO_BUILD_ROOT}/simlingo"
+export SIMLINGO_BUCKET_ROOT="${SIMLINGO_BUILD_ROOT}/bucketsv2_simlingo"
+export SIMLINGO_ARCHIVE_ROOT="${BASE_DIR}/database_archives/simlingo"
+```
+
+Download from Hugging Face:
+
+```bash
+mkdir -p "$(dirname "${HF_DATASET_ROOT}")"
+
+if [ ! -d "${HF_DATASET_ROOT}/.git" ]; then
+  git lfs install
+  GIT_LFS_SKIP_SMUDGE=1 git clone https://huggingface.co/datasets/RenzKa/simlingo "${HF_DATASET_ROOT}"
+fi
+
+cd "${HF_DATASET_ROOT}"
+git lfs pull
+```
+
+Create the temporary scratch source tree:
+
+```bash
+rm -rf "${SIMLINGO_BUILD_ROOT}"
+mkdir -p "${SIMLINGO_DATA_ROOT}" "${SIMLINGO_BUCKET_ROOT}"
+cp "${HF_DATASET_ROOT}/buckets_paths.pkl" "${SIMLINGO_BUCKET_ROOT}/"
+
+for f in "${HF_DATASET_ROOT}"/*.tar.gz; do
+  echo "Extracting $f"
+  tar -xzf "$f" -C "${SIMLINGO_DATA_ROOT}"
+done
+```
+
+Pack the archive set:
+
+```bash
+cd "${REPO_DIR}"
+bash thesis/scripts/pack_simlingo_dataset.sh
 ```
 
 Verify:
 
 ```bash
-readlink -f database/simlingo
-readlink -f database/bucketsv2_simlingo
-test -d database/simlingo/data/simlingo && echo "dataset ok"
-test -f database/bucketsv2_simlingo/buckets_paths.pkl && echo "buckets ok"
+test -s "${SIMLINGO_ARCHIVE_ROOT}/dataset_archives.txt" && echo "dataset archive manifest ok"
+test -s "${SIMLINGO_ARCHIVE_ROOT}/dataset_metadata.env" && cat "${SIMLINGO_ARCHIVE_ROOT}/dataset_metadata.env"
+test -s "${SIMLINGO_ARCHIVE_ROOT}/stage_parent_dirs.txt" && echo "parent dirs manifest ok"
+test -f "${SIMLINGO_ARCHIVE_ROOT}/bucketsv2_simlingo.tar" && echo "bucket archive ok"
 ```
 
-## FlashAttention2
+After verification:
 
-The current temporal training runs use FlashAttention2.
+```bash
+rm -rf "${SIMLINGO_BUILD_ROOT}"
+```
+
+Knobs:
+
+- `SIMLINGO_ARCHIVE_PARTS`, default `8`: number of dataset tar parts.
+- `SIMLINGO_STAGE_JOBS`, default `8`: number of parallel unpack jobs.
+
+## 4. Training From Archives
+
+Archive-aware Slurm launchers:
+
+- source `thesis/scripts/stage_simlingo_to_scratch.sh`
+- read `${SIMLINGO_ARCHIVE_ROOT}/dataset_archives.txt`
+- unpack archives to `${SIMLINGO_SCRATCH_BASE}/simlingo/${SLURM_JOB_ID}`
+- unpack `bucketsv2_simlingo.tar`
+- validate route count against `dataset_metadata.env`
+- train from `TRAIN_DATA_ROOT="${STAGED_DATA_ROOT}"`
+- train from `TRAIN_BUCKET_ROOT="${STAGED_BUCKET_ROOT}"`
+
+Important:
+
+- no repo-local dataset symlinks are needed
+- jobs do not read from Hugging Face `.tar.gz` files
+- jobs fail immediately if the archive set is missing or invalid
+- do not delete or move `${SIMLINGO_ARCHIVE_ROOT}` while a job may still need it
+
+## 5. FlashAttention2
+
+Install only if the environment does not already have it:
 
 ```bash
 export CUDA_HOME=/software/sse/manual/CUDA/12.1.1_530.30.02
@@ -113,34 +184,29 @@ export MAX_JOBS=8
 /home/x_hugaf/.conda/envs/simlingo/bin/python -m pip install flash-attn --no-build-isolation
 ```
 
-## Relevant SLURM Scripts
+## 6. Training Jobs
 
-- `thesis/slurm/train_temporal.slurm`
-  - full 8-GPU temporal training
-  
+Shared hardware request for full temporal runs:
 
-## Training
+- `8` A100 80GB GPUs
+- `64` CPU cores
+- `900G` RAM
+- `3` days walltime
 
-Create logs once:
+Create logs:
 
 ```bash
 mkdir -p "${LOG_ROOT}/training"
 ```
 
-Training is split between experiment configs and SLURM launchers:
-- experiment configs live in `simlingo_training/config/experiment/`
-- the current training launcher lives in `thesis/slurm/train_temporal.slurm`
+### Q-Former v2
 
-What to edit where:
-- edit experiment configs for model, temporal, dataset, optimizer, and other reproducible training settings
-- edit `train_temporal.slurm` for cluster resources, walltime, job name, mail settings, and small run-specific Hydra overrides
+- Config: `simlingo_training/config/experiment/temporal_qformer_v2.yaml`
+- Launcher: `thesis/slurm/train_temporal.slurm`
+- Output: `outputs/2026_04_25_17_38_40_temporal_qformer_v2_8gpu`
+- Status: completed `14` epochs.
 
-For the temporal setup in this branch:
-- the current launch config is `simlingo_training/config/experiment/temporal_qformer_v2.yaml`
-- the training launcher is `thesis/slurm/train_temporal.slurm`
-- it currently requests `8` GPUs, `64` CPU cores, `900G` RAM, and `3` days walltime
-
-Submit from the repo root:
+Submit:
 
 ```bash
 cd "${REPO_DIR}"
@@ -148,7 +214,22 @@ source thesis/env.sh
 sbatch --account="${SLURM_ACCOUNT}" thesis/slurm/train_temporal.slurm
 ```
 
-Monitor:
+### Q-Former v3 Gate 0
+
+- Config: `simlingo_training/config/experiment/temporal_qformer_v3_gate0.yaml`
+- Launcher: `thesis/slurm/train_temporal_v3_gate0.slurm`
+- Output: `outputs/2026_04_27_02_25_36_temporal_qformer_v3_gate0_8gpu`
+- Difference from v2: `temporal_model.gate_init=0.0`.
+
+Submit:
+
+```bash
+cd "${REPO_DIR}"
+source thesis/env.sh
+sbatch --account="${SLURM_ACCOUNT}" thesis/slurm/train_temporal_v3_gate0.slurm
+```
+
+Monitor any training job:
 
 ```bash
 squeue -u "$USERNAME"
@@ -156,133 +237,101 @@ tail -f "${LOG_ROOT}/training/<jobid>.out"
 tail -f "${LOG_ROOT}/training/<jobid>.err"
 ```
 
-## Bench2Drive Evaluation
+## 7. Checkpoints
 
-The thesis workflow is:
-1. run the model online on all Bench2Drive routes
-2. merge the per-route JSONs
-3. run the scenario-failure analysis
-4. optionally render selected cases
+DeepSpeed checkpoints are directories:
 
-Do not run merge/analyze before the online evaluation has finished.
+- `outputs/.../checkpoints/epoch=007.ckpt`
+- `outputs/.../checkpoints/last.ckpt`
 
-The launcher is:
-- `start_eval_simlingo.py`
+These are training-resume checkpoints, not plain `torch.load(...)` files.
 
-It writes results under:
-- `${EVAL_OUT_ROOT}/${EVAL_RUN_NAME}/bench2drive/<seed>/...`
-
-Important:
-- if you keep the default `EVAL_RUN_NAME=simlingo`, the temporal evaluation will share the same result tree as the baseline
-- that is unsafe because `start_eval_simlingo.py` skips routes that already have completed result files
-- use a distinct run name for every temporal evaluation run
-
-Inside the existing `temporal` tmux session:
+Convert to fp32 for many inference/render jobs:
 
 ```bash
-export MODEL_CKPT="${REPO_DIR}/outputs/2026_04_19_09_03_16_temporal_qformer_v1_8gpu/checkpoints/epoch=000.ckpt"
-export EVAL_RUN_NAME="simlingo_temporal_v1_8gpu_epoch000"
+cd "${REPO_DIR}"
+mkdir -p /tmp/${USER}_triton
+
+RUN_DIR="outputs/<run_name>"
+EPOCH="epoch=013"
+
+PYTHONPATH="${REPO_DIR}" \
+TRITON_CACHE_DIR="/tmp/${USER}_triton" \
+/home/x_hugaf/.conda/envs/simlingo/bin/python \
+"${RUN_DIR}/checkpoints/${EPOCH}.ckpt/zero_to_fp32.py" \
+"${RUN_DIR}/checkpoints/${EPOCH}.ckpt" \
+"${RUN_DIR}/checkpoints/${EPOCH}_fp32"
+```
+
+Result:
+
+- `${RUN_DIR}/checkpoints/${EPOCH}_fp32/pytorch_model.bin`
+
+Rendering can load either the DeepSpeed checkpoint directory or the converted
+`.bin`. The `.bin` usually starts faster across many jobs.
+
+## 8. Full Bench2Drive Evaluation
+
+Workflow:
+
+1. run the model online on all Bench2Drive routes
+2. merge the per-route JSON files
+3. run scenario-failure analysis
+4. render selected cases if needed
+
+Do not merge/analyze before online evaluation finishes.
+
+Run full evaluation from tmux:
+
+```bash
+export MODEL_CKPT="${REPO_DIR}/outputs/<run_name>/checkpoints/<checkpoint>"
+export EVAL_RUN_NAME="<unique_eval_name>"
 source thesis/env.sh
 echo "8" > max_num_jobs.txt
 python start_eval_simlingo.py
 ```
 
-This gives:
-- `${BENCH2DRIVE_ROOT}=${BASE_DIR}/eval_results/Bench2Drive/simlingo_temporal_v1_8gpu_epoch000/bench2drive`
+Important:
 
-Notes:
-- using the DeepSpeed checkpoint directory is fine here; the temporal agent can load it directly
-- for many eval jobs, the converted `pytorch_model.bin` may start slightly faster if you prefer to point `MODEL_CKPT` there instead
-- reuse the same `temporal` tmux session for this branch rather than creating extra sessions
-- `thesis/slurm/eval_simlingo.slurm` still works, but the tmux workflow is the baseline-style orchestrator path and is easier to monitor
+- always use a unique `EVAL_RUN_NAME`
+- default `simlingo` can collide with baseline results
+- `start_eval_simlingo.py` skips routes with completed result files
 
-## Merge And Analyze Results
-
-After all Bench2Drive jobs are finished:
+After all routes finish:
 
 ```bash
-export EVAL_RUN_NAME="simlingo_temporal_v1_8gpu_epoch000"
+export EVAL_RUN_NAME="<unique_eval_name>"
 source thesis/env.sh
 
 python thesis/analysis/merge_bench2drive_results.py -b "${BENCH2DRIVE_ROOT}"
 
 python thesis/analysis/analyze_scenario_failures.py \
   -b "${BENCH2DRIVE_ROOT}" \
-  -o thesis/results/scenario_failure_report_temporal_v1_8gpu_epoch000.txt
+  -o thesis/results/scenario_failure_report_<unique_eval_name>.txt
 ```
 
-Notes:
-- `merge_bench2drive_results.py` reads `${BENCH2DRIVE_ROOT}/1/res`, `/2/res`, and `/3/res`
-- `analyze_scenario_failures.py` reads the same merged run tree
-- they expect the full benchmark files `000_res.json` ... `219_res.json`, not manifest render outputs such as `rendering_route2201_seed1_res.json`
-- if you omit `-o`, the analysis report will overwrite `thesis/results/scenario_failure_report.txt`
+Analysis expects full benchmark result files, not selected-route rendering JSONs.
 
-## Checkpoints
+## 9. Render Selected Failure Cases
 
-DeepSpeed checkpoints are saved as directories, for example:
-- `outputs/.../checkpoints/epoch=000.ckpt`
-- `outputs/.../checkpoints/last.ckpt`
+Rendering uses:
 
-These are training-resume checkpoints, not plain `torch.load(...)` model files.
-
-## Convert A Checkpoint For Inference
-
-Training checkpoints are saved in DeepSpeed format as directories such as `epoch=000.ckpt/`.
-
-If you want a plain single-file PyTorch checkpoint for inference, convert it with `zero_to_fp32.py`:
-
-```bash
-cd "${REPO_DIR}"
-mkdir -p /tmp/${USER}_triton
-PYTHONPATH="${REPO_DIR}" \
-TRITON_CACHE_DIR="/tmp/${USER}_triton" \
-/home/x_hugaf/.conda/envs/simlingo/bin/python \
-outputs/2026_04_19_09_03_16_temporal_qformer_v1_8gpu/checkpoints/epoch=000.ckpt/zero_to_fp32.py \
-outputs/2026_04_19_09_03_16_temporal_qformer_v1_8gpu/checkpoints/epoch=000.ckpt \
-outputs/2026_04_19_09_03_16_temporal_qformer_v1_8gpu/checkpoints/epoch=000_fp32
-```
-
-Result:
-- `outputs/2026_04_19_09_03_16_temporal_qformer_v1_8gpu/checkpoints/epoch=000_fp32/pytorch_model.bin`
-
-Notes:
-- This creates a normal fp32 state dict file.
-- Rendering can load either the DeepSpeed checkpoint directory or the converted `pytorch_model.bin`.
-- The conversion is optional.
-- For many render jobs, the converted `pytorch_model.bin` is recommended because startup is faster and each job avoids reconstructing the fp32 state dict from the DeepSpeed shards.
-
-
-
-## Render Failure Cases With The Temporal Model
-
-Rendering uses the online CARLA agent:
 - `team_code/agent_simlingo.py`
+- `thesis/rendering/submit_render_jobs.py`
 
-It can load either:
-- a DeepSpeed checkpoint directory such as `outputs/.../checkpoints/epoch=000.ckpt`
-- or a converted plain checkpoint such as `outputs/.../checkpoints/epoch=000_fp32/pytorch_model.bin`
+Useful manifests:
 
-Use the DeepSpeed checkpoint directly for convenience, or the converted `.bin` for faster startup across many render jobs.
-
-Edit the manifest, for example:
-- `thesis/rendering/manifests/render_manifest_temporal_v1_8gpu_epoch004_selected.json`
-
-Set:
-- `agent`
-  - a distinct output name such as `simlingo_temporal_v1_8gpu_epoch004_render`
-- `agent_file`
-  - `team_code/agent_simlingo.py`
-- `checkpoint`
-  - the temporal checkpoint you want to render
-- `out_root`
-  - `${BASE_DIR}/eval_results/Bench2Drive`
+- `thesis/rendering/manifests/render_manifest_temporal_v2_8gpu_epoch013_selected.json`
+- `thesis/rendering/manifests/render_manifest_temporal_v3_gate0_8gpu_epoch011_selected.json`
 
 Dry run:
 
 ```bash
 cd "${REPO_DIR}"
 source thesis/env.sh
-python thesis/rendering/submit_render_jobs.py --manifest thesis/rendering/manifests/render_manifest_temporal_v1_8gpu_epoch004_selected.json --dry-run
+python thesis/rendering/submit_render_jobs.py \
+  --manifest thesis/rendering/manifests/<manifest>.json \
+  --dry-run
 ```
 
 Submit:
@@ -290,7 +339,8 @@ Submit:
 ```bash
 cd "${REPO_DIR}"
 source thesis/env.sh
-python thesis/rendering/submit_render_jobs.py --manifest thesis/rendering/manifests/render_manifest_temporal_v1_8gpu_epoch004_selected.json
+python thesis/rendering/submit_render_jobs.py \
+  --manifest thesis/rendering/manifests/<manifest>.json
 ```
 
 Monitor:
@@ -299,86 +349,109 @@ Monitor:
 squeue -u "$USERNAME"
 ```
 
-These jobs run the temporal model online for the selected route/seed cases and write frames, metadata, and optional MP4s under the configured output root.
-
-
-## Cleanup
-
-After extraction and verification, the original Hugging Face clone can be removed:
+Render outputs are written under:
 
 ```bash
-rm -rf "${BASE_DIR}/database/simlingo_hf"
+${EVAL_OUT_ROOT}/<agent_name>/bench2drive/<seed>/
 ```
 
+## 10. Temporal Implementation Facts
 
+- Training frame order is old-to-new; the last frame is current.
+- Dataset frames are saved every `5` CARLA ticks.
+- With `history_stride=1`, inference samples every `1 * 5` simulator ticks.
+- Override inference spacing only if needed with `TEMPORAL_INFERENCE_STRIDE=<sim_steps>`.
+- Normal image tokens receive the current frame.
+- Q-former temporal tokens receive only past frames.
+- The delta-feature temporal implementation is kept on the separate `temporal-delta-feature` branch.
+- During training, driving heads condition on ground-truth assistant text.
+- During evaluation, the model first generates assistant text, then predicts driving from that generated text.
+- Therefore wrong generated commentary can hurt driving prediction.
 
------------------------------------------------
+Assistant text cases:
 
-NOTES:
+- commentary-generation samples: ground-truth driving commentary followed by `Waypoints:`
+- direct-driving samples: only `Waypoints:`
+- QA samples: ground-truth QA answer
 
-Temporal v1 experiment:
+## 11. Experiment Tracker
 
-- config:
-  - `simlingo_training/config/experiment/temporal_qformer_v1.yaml`
-- launcher:
-  - `thesis/slurm/train_temporal.slurm`
-- settings:
-  - `hist_len=3`
-  - `history_stride=1`
-  - `temporal_model.enabled=true`
-  - `temporal_model.num_queries=8`
-  - `temporal_model.num_layers=2`
-  - `temporal_model.gate_init=-2.0`
-  - `data_module.batch_size=6`
-  - `max_epochs=5`
-  - `val_every_n_epochs=1`
-- frozen:
-  - vision encoder
-  - language model
-  - adaptors
-  - waypoint encoder
-- trainable:
-  - temporal Q-former
+### v1 Q-Former
 
-Recommended next experiment:
+- Config: `simlingo_training/config/experiment/temporal_qformer_v1.yaml`
+- Setup: `hist_len=3`, `history_stride=1`, `num_queries=8`, `gate_init=-2.0`, `batch_size=6`, `max_epochs=5`
+- Trainable: temporal Q-former, InternVL `mlp1`
+- Frozen: main vision encoder, full LLM, adaptors, waypoint-token encoder
+- Outcome: useful wiring test, but too small/short to fix motion-reasoning failures.
 
-- `hist_len=5`
-- `history_stride=1`
-- `freeze_language_model=false`
-- keep `language_model.lora=True`
-- `data_module.batch_size=12`
-- `temporal_model.num_queries=16`
-- `temporal_model.gate_init=-2.0`
-- `max_epochs=14`
-- `val_every_n_epochs=2`
+### v2 Q-Former
 
-- Reason:
-  - `hist_len=3` is likely too short to expose clear motion cues in junction failures.
-  - allowing the LoRA-adapted language model to train should help the LLM learn how to use the new temporal tokens.
-  - `batch_size=12`, `14` epochs, and validation every `2` epochs bring the run closer to the SimLingo paper recipe while still testing the temporal extension.
-  - `num_queries=16` is more aligned with the ORION-inspired query-based temporal design than `12`, while still remaining lightweight compared with larger Q-Former-style bottlenecks.
-  - keep `gate_init=-2.0` conservative so the new temporal branch starts with low influence instead of injecting too much noise into the pretrained stack early in training.
-  - `14` epochs gives the temporal branch substantially more time to become useful than the current short run.
+- Config: `simlingo_training/config/experiment/temporal_qformer_v2.yaml`
+- Job: `16437515`
+- Output: `outputs/2026_04_25_17_38_40_temporal_qformer_v2_8gpu`
+- Setup: `hist_len=5`, `history_stride=1`, `num_queries=16`, `num_layers=2`, `gate_init=-2.0`, `batch_size=12`, `max_epochs=14`, `val_every_n_epochs=2`
+- Trainable: temporal Q-former, LLM LoRA adapters, InternVL `mlp1`
+- Frozen: main vision encoder, base LLM weights, driving/language adaptors, waypoint-token encoder
 
-- Suggested follow-up after that:
-  - if this still does not help, try a longer temporal span with non-contiguous history sampling instead of only adjacent frames.
-  - the dataset stores one frame every `0.25 s` (`20 FPS` CARLA, saved every `5` sim steps), so a good first non-contiguous setting is `history_stride=2` over saved frames, i.e. `0.5 s` between sampled history frames.
-  - training now supports `history_stride` directly in the experiment config.
-  - inference now mirrors the training spacing automatically: it samples past frames every `history_stride * 5` simulator steps by default.
-  - only override this manually if needed via `TEMPORAL_INFERENCE_STRIDE=<sim_steps>`.
+Evidence:
 
-Potential thesis ablation:
+- Final selected renders still showed wrong/stale moving-vehicle commentary in selected failures.
+- v2 final gate stayed weak: sigmoid about `0.167` at `epoch=013`.
+- v2 selected final renders still had collisions on routes including `3936`, `4183`, `4468`, and `4683`.
 
-- quick development ablation:
-  - keep the same temporal setup but compare `freeze_language_model=true` vs `false`
-  - purpose:
-    - test whether adapting the LoRA language model is necessary for the LLM to learn how to use the temporal tokens
+### v3 Q-Former Gate 0
 
-- parameter-matched no-temporal control:
-  - keep the same temporal Q-former architecture and training setup
-  - but replace the past-frame inputs with copies of the current frame
-  - purpose:
-    - test whether any gain comes from actual temporal information rather than just extra parameters or extra token capacity
+- Config: `simlingo_training/config/experiment/temporal_qformer_v3_gate0.yaml`
+- Job: `16443291`
+- Output: `outputs/2026_04_27_02_25_36_temporal_qformer_v3_gate0_8gpu`
+- Difference from v2: gate starts at sigmoid `0.5` instead of `0.119`.
 
+Evidence so far:
 
-----------------------------------
+- `epoch=011` improved route `4683` in selected rendering: score `100`, no collision.
+- Other selected cases still had collisions.
+- Interpretation: stronger temporal influence helps some cases, but does not fully solve the failure mode.
+
+### Delta Feature v1
+
+- Branch: `temporal-delta-feature`
+- Config: `simlingo_training/config/experiment/temporal_delta_feature_v1.yaml`
+- Launcher: `thesis/slurm/train_temporal_delta_feature.slurm`
+- Setup: `hist_len=5`, `history_stride=1`, `num_queries=64`, `gate_init=0.0`, `include_absolute_delta=true`, `delta_decay=0.9`, `batch_size=12`, `max_epochs=14`
+- Rationale: inspired by DeltaFlow. Instead of summarizing past frames, it computes feature-space motion trails using current-vs-past InternVL deltas.
+
+Delta feature flow:
+
+```text
+current InternVL tokens: [B, 256, D]
+past InternVL tokens:    [B, 4, 256, D]
+
+signed_delta = current - past
+absolute_delta = abs(current - past)
+weighted average over time with delta_decay=0.9
+shared motion map: [B, 256, D]
+pool 16x16 -> 8x8
+64 temporal tokens
+```
+
+Why `64` tokens:
+
+- InternVL2-1B gives `256` visual tokens, roughly a `16 x 16` grid.
+- `64` temporal tokens preserve an `8 x 8` coarse motion grid.
+- This is less compressed than `16` tokens and should preserve more small-vehicle motion detail.
+
+## 12. If Current Temporal Runs Still Fail
+
+Do not only keep changing the temporal architecture. Diagnose the source:
+
+- supervision/data: oversample junctions with moving vehicles, DriveLM moving-status QA, or explicit moving/stopped labels
+- labels: improve commentary labels that describe crossing/moving vehicles as stopped
+- conditioning: test direct waypoint prediction without generated commentary
+- temporal usage: compare real history with repeated-current or shuffled history
+
+Useful thesis ablations:
+
+- LoRA ablation: train temporal Q-former with and without trainable LLM LoRA adapters.
+- Parameter-matched no-temporal control: keep temporal module capacity but replace past frames with current-frame copies.
+- Temporal-history diagnostic: compare real history with repeated-current or shuffled history during rendering.
+- No-COT diagnostic: evaluate selected routes with direct waypoint prediction instead of generated commentary first.
