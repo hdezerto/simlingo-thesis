@@ -24,6 +24,7 @@ class TemporalDeltaFeatureEncoder(nn.Module):
         max_history_frames: int,
         num_queries: int = 16,
         dropout: float = 0.1,
+        gate_enabled: bool = True,
         gate_init: float = 0.0,
         include_absolute_delta: bool = True,
         delta_decay: float = 0.9,
@@ -33,6 +34,7 @@ class TemporalDeltaFeatureEncoder(nn.Module):
         self.hidden_size = hidden_size
         self.num_queries = num_queries
         self.max_history_frames = max(1, max_history_frames)
+        self.gate_enabled = gate_enabled
         self.include_absolute_delta = include_absolute_delta
         self.delta_decay = delta_decay
 
@@ -53,7 +55,8 @@ class TemporalDeltaFeatureEncoder(nn.Module):
             nn.Linear(hidden_size * 2, hidden_size),
         )
         self.output_norm = nn.LayerNorm(hidden_size)
-        self.gate = nn.Parameter(torch.tensor(gate_init, dtype=torch.float))
+        if self.gate_enabled:
+            self.gate = nn.Parameter(torch.tensor(gate_init, dtype=torch.float))
 
     def get_time_weights(self, num_past_frames: int, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
         # Past frames are ordered oldest -> newest. With decay < 1, older deltas
@@ -119,5 +122,7 @@ class TemporalDeltaFeatureEncoder(nn.Module):
 
         pooled_motion = self.pool_motion_features(motion_features)
         temporal_tokens = self.output_norm(self.token_projection(pooled_motion))
+        if not self.gate_enabled:
+            return temporal_tokens
 
         return torch.sigmoid(self.gate) * temporal_tokens
