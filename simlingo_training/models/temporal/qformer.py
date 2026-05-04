@@ -3,6 +3,10 @@ from typing import Optional
 import torch
 from torch import nn
 
+# Compatibility shim for checkpoints/configs created before the delta encoder
+# moved to delta_feature.py. New configs should target delta_feature directly.
+from .delta_feature import TemporalDeltaFeatureEncoder
+
 
 class TemporalQFormerLayer(nn.Module):
     def __init__(self, hidden_size: int, num_heads: int, dropout: float):

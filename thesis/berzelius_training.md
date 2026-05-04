@@ -6,8 +6,8 @@ This document is the canonical notes file on `temporal-module`.
 
 ## 1. Branches
 
-- `temporal-module`: main temporal branch. It contains the Q-former experiments, scratch dataset staging, and rendering/inference fixes.
-- `temporal-delta-feature`: separate branch for the DeltaFlow-inspired feature-delta experiment. Keep the delta implementation there unless deliberately merging it later.
+- `temporal-module`: main temporal branch. It contains the Q-former experiments, the integrated delta-feature experiment, scratch dataset staging, and rendering/inference fixes.
+- `temporal-delta-feature`: old development branch for the DeltaFlow-inspired feature-delta experiment. It can be kept as history until the integrated `temporal-module` version is verified.
 
 ## 2. Environment
 
@@ -363,7 +363,10 @@ ${EVAL_OUT_ROOT}/<agent_name>/bench2drive/<seed>/
 - Override inference spacing only if needed with `TEMPORAL_INFERENCE_STRIDE=<sim_steps>`.
 - Normal image tokens receive the current frame.
 - Q-former temporal tokens receive only past frames.
-- The delta-feature temporal implementation is kept on the separate `temporal-delta-feature` branch.
+- Delta-feature temporal tokens use current-vs-past InternVL feature differences.
+- Temporal method selection is done through Hydra `_target_`:
+  - Q-former: `simlingo_training.models.temporal.qformer.TemporalQFormer`
+  - delta feature: `simlingo_training.models.temporal.delta_feature.TemporalDeltaFeatureEncoder`
 - During training, driving heads condition on ground-truth assistant text.
 - During evaluation, the model first generates assistant text, then predicts driving from that generated text.
 - Therefore wrong generated commentary can hurt driving prediction.
@@ -422,7 +425,6 @@ Evidence so far:
 
 ### Delta Feature v1
 
-- Branch: `temporal-delta-feature`
 - Config: `simlingo_training/config/experiment/temporal_delta_feature_v1.yaml`
 - Launcher: `thesis/slurm/train_temporal_delta_feature.slurm`
 - Setup: `hist_len=5`, `history_stride=1`, `num_queries=64`, `gate_init=0.0`, `include_absolute_delta=true`, `delta_decay=0.9`, `batch_size=12`, `max_epochs=14`

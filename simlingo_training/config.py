@@ -33,6 +33,8 @@ class TemporalModelConfig:
     dropout: float = 0.1
     gate_enabled: bool = True
     gate_init: float = -2.0
+    include_absolute_delta: bool = True
+    delta_decay: float = 0.9
 
     _target_: str = "simlingo_training.models.temporal.qformer.TemporalQFormer"
 
