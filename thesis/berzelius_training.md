@@ -409,8 +409,16 @@ Evidence:
 Evidence so far:
 
 - `epoch=011` improved route `4683` in selected rendering: score `100`, no collision.
-- Other selected cases still had collisions.
-- Interpretation: stronger temporal influence helps some cases, but does not fully solve the failure mode.
+- `epoch=013` did not keep that improvement on route `4683`; the selected render again collided.
+- Full `epoch=011` evaluation:
+  - metrics file: `thesis/results/metrics_temporal_v3_gate0_epoch011_eval.txt`
+  - driving score: `86.09 +/- 0.70`
+  - success rate: `67.42% +/- 0.77%`
+- Gate values stayed almost unchanged:
+  - `epoch=005`: raw `0.006931`, sigmoid `0.501733`
+  - `epoch=011`: raw `0.012207`, sigmoid `0.503052`
+  - `epoch=013`: raw `0.012276`, sigmoid `0.503069`
+- Interpretation: stronger initial temporal influence helped some cases, but the model did not learn to open the gate much further and the improvement was not consistent.
 
 ### Delta Feature v1
 
@@ -440,7 +448,54 @@ Why `64` tokens:
 - `64` temporal tokens preserve an `8 x 8` coarse motion grid.
 - This is less compressed than `16` tokens and should preserve more small-vehicle motion detail.
 
-## 12. If Current Temporal Runs Still Fail
+Evidence:
+
+- Training completed successfully through `epoch=013`.
+- Selected render output: `simlingo_temporal_delta_feature_v1_8gpu_epoch013_render_selected`
+- Rendered videos were produced for routes `3936`, `4183`, `4468`, and `4683`.
+- Route `11755` failed technically because CARLA crashed with `Signal 11` and then timed out.
+- Delta was not clearly better than Q-former v3:
+  - matched v3 on `3936`
+  - matched or improved over v3 `epoch=013` on `4468`
+  - worse than v3 `epoch=011` on `4183` and `4683`
+  - still generated the problematic "other vehicles are stopped" commentary on route `4683`
+
+Interpretation:
+
+- The delta representation is useful as an alternative thesis ablation, but the selected renders do not show a significant improvement over the Q-former branch.
+- The remaining failure mode is likely not only temporal-token architecture. It is probably also related to supervision, data balance, and generated-commentary conditioning.
+
+## 12. Current Resource Snapshot
+
+Checked on `2026-05-04` with:
+
+```bash
+projinfo -m berzelius-2025-435
+```
+
+- Monthly allocation: `5000 h/month`
+- Project consumption since `2026-05-01`: `1329.01 h`
+- User `x_hugaf` consumption since `2026-05-01`: `1102.25 h`
+- Approximate project hours remaining this month: `3670.99 h`
+
+## 13. Recommended Next Run
+
+Recommended next Q-former experiment:
+
+- keep the v3 architecture and training recipe
+- keep `num_queries=16`
+- increase `temporal_model.gate_init` from `0.0` to `1.0`
+- keep `hist_len=5`, `history_stride=1`, `batch_size=12`, `max_epochs=14`
+- render the same selected failure routes early, for example at `epoch=005` or `epoch=007`
+
+Why this run:
+
+- ORION is the closest paper to this setting and found `16` history queries better than `32`.
+- v3 already used `16` queries and showed one real improvement, but the gate stayed at about `0.503`, so the temporal branch may still be too weak.
+- A stronger gate start, sigmoid about `0.731`, tests temporal influence without removing the stabilizing gate completely.
+- Disabling the gate is a useful ablation later, but is riskier because it lets randomly initialized temporal tokens enter at full strength from the first step.
+
+If this run still fails:
 
 Do not only keep changing the temporal architecture. Diagnose the source:
 

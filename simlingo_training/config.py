@@ -31,6 +31,7 @@ class TemporalModelConfig:
     num_layers: int = 2
     num_heads: int = 8
     dropout: float = 0.1
+    gate_enabled: bool = True
     gate_init: float = -2.0
 
     _target_: str = "simlingo_training.models.temporal.qformer.TemporalQFormer"

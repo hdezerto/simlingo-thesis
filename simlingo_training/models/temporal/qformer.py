@@ -59,6 +59,7 @@ class TemporalQFormer(nn.Module):
         num_layers: int = 2,
         num_heads: int = 8,
         dropout: float = 0.1,
+        gate_enabled: bool = True,
         gate_init: float = -2.0,
         **_: Optional[object],
     ):
@@ -66,6 +67,7 @@ class TemporalQFormer(nn.Module):
         self.hidden_size = hidden_size
         self.num_queries = num_queries
         self.max_history_frames = max(1, max_history_frames)
+        self.gate_enabled = gate_enabled
 
         # Learned summary slots that compress all past frames into a small token set.
         # They are expanded per batch item in forward().
@@ -81,7 +83,8 @@ class TemporalQFormer(nn.Module):
             [TemporalQFormerLayer(hidden_size, num_heads, dropout) for _ in range(num_layers)]
         )
         self.output_norm = nn.LayerNorm(hidden_size)
-        self.gate = nn.Parameter(torch.tensor(gate_init, dtype=torch.float))
+        if self.gate_enabled:
+            self.gate = nn.Parameter(torch.tensor(gate_init, dtype=torch.float))
 
     def forward(self, past_frame_tokens: torch.Tensor) -> torch.Tensor:
         """
@@ -124,6 +127,10 @@ class TemporalQFormer(nn.Module):
         for layer in self.layers:
             queries = layer(queries, memory)
 
-        # The gate starts small, so the temporal branch can learn to help gradually
+        queries = self.output_norm(queries)
+        if not self.gate_enabled:
+            return queries
+
+        # The gate can start small so the temporal branch learns to help gradually
         # instead of overwhelming the baseline image path early in training.
-        return torch.sigmoid(self.gate) * self.output_norm(queries)
+        return torch.sigmoid(self.gate) * queries
