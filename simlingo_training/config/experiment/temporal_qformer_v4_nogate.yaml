@@ -7,7 +7,7 @@ defaults:
 model:
   lr: 3e-5
   freeze_language_model: false
-  freeze_adaptors: true
+  freeze_adaptors: false
   freeze_wp_encoder: true
   predict_route_as_wps: True
   speed_wps_mode: 2d

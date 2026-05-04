@@ -355,125 +355,72 @@ Render outputs are written under:
 ${EVAL_OUT_ROOT}/<agent_name>/bench2drive/<seed>/
 ```
 
-## 10. Temporal Implementation Facts
+## 10. Temporal Implementation Summary
 
-- Training frame order is old-to-new; the last frame is current.
+Temporal input:
+
+- Training frames are ordered old-to-new; the last frame is current.
 - Dataset frames are saved every `5` CARLA ticks.
-- With `history_stride=1`, inference samples every `1 * 5` simulator ticks.
+- With `history_stride=1`, inference samples history every `5` simulator ticks.
 - Override inference spacing only if needed with `TEMPORAL_INFERENCE_STRIDE=<sim_steps>`.
-- Diagnostic rendering can override temporal history with `TEMPORAL_HISTORY_MODE`:
-  - `real`: normal history
-  - `repeat_current`: replace past features with copies of the current-frame features
-  - `zero`: keep the normal current image tokens but fill `<TEMP_CONTEXT>` with zeros
+- Online inference stores encoded InternVL features in `frame_feature_buffer`, so each current frame is encoded once and reused as history later.
+
+Temporal methods:
+
+| Method | Config target | Temporal information |
+| --- | --- | --- |
+| Q-former | `simlingo_training.models.temporal.qformer.TemporalQFormer` | Past-frame InternVL features compressed into `<TEMP_CONTEXT>` tokens |
+| Delta feature | `simlingo_training.models.temporal.delta_feature.TemporalDeltaFeatureEncoder` | Current-vs-past InternVL feature differences pooled into `<TEMP_CONTEXT>` tokens |
+
+Evaluation behavior:
+
 - Normal image tokens receive the current frame.
-- Q-former temporal tokens receive only past frames.
-- Delta-feature temporal tokens use current-vs-past InternVL feature differences.
-- Temporal method selection is done through Hydra `_target_`:
-  - Q-former: `simlingo_training.models.temporal.qformer.TemporalQFormer`
-  - delta feature: `simlingo_training.models.temporal.delta_feature.TemporalDeltaFeatureEncoder`
 - During training, driving heads condition on ground-truth assistant text.
 - During evaluation, the model first generates assistant text, then predicts driving from that generated text.
-- Therefore wrong generated commentary can hurt driving prediction.
+- Wrong generated commentary can therefore hurt waypoint/control prediction.
+- Assistant text is commentary plus `Waypoints:`, direct `Waypoints:`, or a QA answer depending on the sample type.
 
-Assistant text cases:
+Inference fixes:
 
-- commentary-generation samples: ground-truth driving commentary followed by `Waypoints:`
-- direct-driving samples: only `Waypoints:`
-- QA samples: ground-truth QA answer
+- `team_code/agent_simlingo.py` now calls `self.model.eval()` after loading the checkpoint, so dropout is disabled during rendering/evaluation.
+- `torch.no_grad()` disables gradients but does not disable dropout.
+- Language generation uses greedy decoding with `temperature=0.0`, so the model text generation itself is deterministic.
+- CARLA closed-loop runs can still vary because actor spawning, simulator state, and small trajectory changes can alter the scenario.
+- Treat old renders made before the `eval()` fix, or renders with actor-spawn warnings, as weak evidence.
 
-## 11. Experiment Tracker
+## 11. Experiment Evidence
 
-### v1 Q-Former
+| Experiment | Setup | Main Evidence | Interpretation |
+| --- | --- | --- | --- |
+| v1 Q-former | `hist_len=3`, `queries=8`, `gate_init=-2.0`, `batch=6`, `epochs=5`; only temporal Q-former and InternVL `mlp1` trainable | Wiring test completed | Too small/short to fix motion failures |
+| v2 Q-former | `hist_len=5`, `queries=16`, `gate_init=-2.0`, `batch=12`, `epochs=14`; temporal Q-former, LLM LoRA, InternVL `mlp1` trainable | Final gate weak, sigmoid about `0.167`; selected final renders still collided on `3936`, `4183`, `4468`, `4683` | Temporal influence likely too weak |
+| v3 Q-former gate 0 | Same as v2, but `gate_init=0.0` | Full `epoch=011` eval: driving score `86.09 +/- 0.70`, success rate `67.42% +/- 0.77%`; gate stayed about `0.503`; current route `4683` diagnostic did not show robust improvement | Stronger initial gate helped some cases, but not consistently |
+| Delta feature v1 | `hist_len=5`, `queries=64`, `gate_init=0.0`, `include_absolute_delta=true`, `delta_decay=0.9`, `batch=12`, `epochs=14` | Trained through `epoch=013`; selected renders not clearly better than v3; still produced problematic stopped-vehicle commentary on `4683` | Useful thesis ablation, but not a clear fix |
 
-- Config: `simlingo_training/config/experiment/temporal_qformer_v1.yaml`
-- Setup: `hist_len=3`, `history_stride=1`, `num_queries=8`, `gate_init=-2.0`, `batch_size=6`, `max_epochs=5`
-- Trainable: temporal Q-former, InternVL `mlp1`
-- Frozen: main vision encoder, full LLM, adaptors, waypoint-token encoder
-- Outcome: useful wiring test, but too small/short to fix motion-reasoning failures.
+Important v3 route `4683` note:
 
-### v2 Q-Former
-
-- Config: `simlingo_training/config/experiment/temporal_qformer_v2.yaml`
-- Job: `16437515`
-- Output: `outputs/2026_04_25_17_38_40_temporal_qformer_v2_8gpu`
-- Setup: `hist_len=5`, `history_stride=1`, `num_queries=16`, `num_layers=2`, `gate_init=-2.0`, `batch_size=12`, `max_epochs=14`, `val_every_n_epochs=2`
-- Trainable: temporal Q-former, LLM LoRA adapters, InternVL `mlp1`
-- Frozen: main vision encoder, base LLM weights, driving/language adaptors, waypoint-token encoder
-
-Evidence:
-
-- Final selected renders still showed wrong/stale moving-vehicle commentary in selected failures.
-- v2 final gate stayed weak: sigmoid about `0.167` at `epoch=013`.
-- v2 selected final renders still had collisions on routes including `3936`, `4183`, `4468`, and `4683`.
-
-### v3 Q-Former Gate 0
-
-- Config: `simlingo_training/config/experiment/temporal_qformer_v3_gate0.yaml`
-- Job: `16443291`
-- Output: `outputs/2026_04_27_02_25_36_temporal_qformer_v3_gate0_8gpu`
-- Difference from v2: gate starts at sigmoid `0.5` instead of `0.119`.
-
-Evidence so far:
-
-- `epoch=011` improved route `4683` in selected rendering: score `100`, no collision.
-- `epoch=013` did not keep that improvement on route `4683`; the selected render again collided.
-- Full `epoch=011` evaluation:
-  - metrics file: `thesis/results/metrics_temporal_v3_gate0_epoch011_eval.txt`
-  - driving score: `86.09 +/- 0.70`
-  - success rate: `67.42% +/- 0.77%`
-- Gate values stayed almost unchanged:
-  - `epoch=005`: raw `0.006931`, sigmoid `0.501733`
-  - `epoch=011`: raw `0.012207`, sigmoid `0.503052`
-  - `epoch=013`: raw `0.012276`, sigmoid `0.503069`
-- Interpretation: stronger initial temporal influence helped some cases, but the model did not learn to open the gate much further and the improvement was not consistent.
-
-### Delta Feature v1
-
-- Config: `simlingo_training/config/experiment/temporal_delta_feature_v1.yaml`
-- Launcher: `thesis/slurm/train_temporal_delta_feature.slurm`
-- Setup: `hist_len=5`, `history_stride=1`, `num_queries=64`, `gate_init=0.0`, `include_absolute_delta=true`, `delta_decay=0.9`, `batch_size=12`, `max_epochs=14`
-- Rationale: inspired by DeltaFlow. Instead of summarizing past frames, it computes feature-space motion trails using current-vs-past InternVL deltas.
+- An early selected `epoch=011` render looked successful, but it was produced before current inference fixes and had CARLA actor-spawn warnings.
+- Current-code diagnostic for v3 `epoch=011`:
+  - `real`: score `42`, `1` vehicle collision, scenario timeout
+  - `repeat_current`: score `36`, `2` vehicle collisions
+  - `zero`: score `60`, `1` vehicle collision
+- Conclusion: v3 does not robustly solve route `4683`; changing history mode changes the rollout, but real history was not reliably better.
 
 Delta feature flow:
 
 ```text
 current InternVL tokens: [B, 256, D]
 past InternVL tokens:    [B, 4, 256, D]
-
 signed_delta = current - past
 absolute_delta = abs(current - past)
 weighted average over time with delta_decay=0.9
-shared motion map: [B, 256, D]
 pool 16x16 -> 8x8
 64 temporal tokens
 ```
 
-Why `64` tokens:
+## 12. Current Resources
 
-- InternVL2-1B gives `256` visual tokens, roughly a `16 x 16` grid.
-- `64` temporal tokens preserve an `8 x 8` coarse motion grid.
-- This is less compressed than `16` tokens and should preserve more small-vehicle motion detail.
-
-Evidence:
-
-- Training completed successfully through `epoch=013`.
-- Selected render output: `simlingo_temporal_delta_feature_v1_8gpu_epoch013_render_selected`
-- Rendered videos were produced for routes `3936`, `4183`, `4468`, and `4683`.
-- Route `11755` failed technically because CARLA crashed with `Signal 11` and then timed out.
-- Delta was not clearly better than Q-former v3:
-  - matched v3 on `3936`
-  - matched or improved over v3 `epoch=013` on `4468`
-  - worse than v3 `epoch=011` on `4183` and `4683`
-  - still generated the problematic "other vehicles are stopped" commentary on route `4683`
-
-Interpretation:
-
-- The delta representation is useful as an alternative thesis ablation, but the selected renders do not show a significant improvement over the Q-former branch.
-- The remaining failure mode is likely not only temporal-token architecture. It is probably also related to supervision, data balance, and generated-commentary conditioning.
-
-## 12. Current Resource Snapshot
-
-Checked on `2026-05-04` with:
+Checked on `2026-05-04`:
 
 ```bash
 projinfo -m berzelius-2025-435
@@ -481,66 +428,58 @@ projinfo -m berzelius-2025-435
 
 - Monthly allocation: `5000 h/month`
 - Project consumption since `2026-05-01`: `1329.01 h`
-- User `x_hugaf` consumption since `2026-05-01`: `1102.25 h`
-- Approximate project hours remaining this month: `3670.99 h`
+- User consumption since `2026-05-01`: `1102.25 h`
+- Approximate project hours remaining: `3670.99 h`
 
-## 13. Recommended Next Run
+## 13. Recommended Next Run (v4)
 
-Recommended next Q-former experiment:
+Run v4 Q-former:
 
-- keep the v3 architecture and training recipe
+- config: `simlingo_training/config/experiment/temporal_qformer_v4_nogate.yaml`
+- launcher: `thesis/slurm/train_temporal_v4_nogate.slurm`
 - keep `num_queries=16`
-- increase `temporal_model.gate_init` from `0.0` to `1.0`
+- set `temporal_model.gate_enabled=false`
+- set `freeze_adaptors=false`
 - keep `hist_len=5`, `history_stride=1`, `batch_size=12`, `max_epochs=14`
-- render the same selected failure routes early, for example at `epoch=005` or `epoch=007`
 
-Why this run:
+Why:
 
-- ORION is the closest paper to this setting and found `16` history queries better than `32`.
-- v3 already used `16` queries and showed one real improvement, but the gate stayed at about `0.503`, so the temporal branch may still be too weak.
-- A stronger gate start, sigmoid about `0.731`, tests temporal influence without removing the stabilizing gate completely.
-- Disabling the gate is a useful ablation later, but is riskier because it lets randomly initialized temporal tokens enter at full strength from the first step.
+- ORION is the closest reference point and found `16` history queries better than `32`.
+- v3 used `16` queries but the learned gate stayed around `0.503`, so disabling the gate directly tests whether it limited temporal influence.
+- Unfreezing adaptors lets the language/driving bridges adapt to `<TEMP_CONTEXT>`.
+- The main vision encoder, base LLM weights, and waypoint encoder remain frozen, so the run is stronger than v3 but still controlled.
 
-If this run still fails:
+Evaluate early:
 
-Do not only keep changing the temporal architecture. Diagnose the source:
+- render selected failures at `epoch=005` or `epoch=007`
+- include route `4683`
+- compare real history against repeated-current and zero history if the result is unclear
 
-- supervision/data: oversample junctions with moving vehicles, DriveLM moving-status QA, or explicit moving/stopped labels
-- labels: improve commentary labels that describe crossing/moving vehicles as stopped
-- conditioning: test direct waypoint prediction without generated commentary
-- temporal usage: compare real history with repeated-current or shuffled history
+## 14. Diagnostics After v3
 
-Useful thesis ablations:
+Temporal-history diagnostic on route `4683`, v3 `epoch=011`:
 
-- LoRA ablation: train temporal Q-former with and without trainable LLM LoRA adapters.
-- Parameter-matched no-temporal control: keep temporal module capacity but replace past frames with current-frame copies.
-- Temporal-history diagnostic: compare real history with repeated-current or shuffled history during rendering.
-- No-COT diagnostic: evaluate selected routes with direct waypoint prediction instead of generated commentary first.
+| Mode | Result |
+| --- | --- |
+| `real` | score `42`, `1` collision, scenario timeout |
+| `repeat_current` | score `36`, `2` collisions |
+| `zero` | score `60`, `1` collision |
 
-## 14. Temporal Token Usage Diagnostic
+Conclusion:
 
-Purpose: test whether the trained model actually uses `<TEMP_CONTEXT>`.
+- v3 does not robustly fix route `4683`.
+- Temporal history affects the rollout, but real history was not better than ablated history.
+- The old selected-render success for route `4683` should not be treated as strong evidence because it used older inference code and had actor-spawn warnings.
 
-Prepared route `4683` manifests for v3 `epoch=011`:
+Most likely remaining bottlenecks:
 
-- `thesis/rendering/manifests/render_manifest_temporal_v3_gate0_epoch011_route4683_history_real.json`
-- `thesis/rendering/manifests/render_manifest_temporal_v3_gate0_epoch011_route4683_history_repeat_current.json`
-- `thesis/rendering/manifests/render_manifest_temporal_v3_gate0_epoch011_route4683_history_zero.json`
+- temporal tokens are noisy or not used in the right way
+- generated commentary may still mislead the driving heads
+- motion supervision may be too weak or diluted
+- labels may overuse stopped-vehicle wording
 
-Run all three from `temporal-module`:
+Best follow-ups:
 
-```bash
-cd "${REPO_DIR}"
-source thesis/env.sh
-
-python thesis/rendering/submit_render_jobs.py --manifest thesis/rendering/manifests/render_manifest_temporal_v3_gate0_epoch011_route4683_history_real.json
-python thesis/rendering/submit_render_jobs.py --manifest thesis/rendering/manifests/render_manifest_temporal_v3_gate0_epoch011_route4683_history_repeat_current.json
-python thesis/rendering/submit_render_jobs.py --manifest thesis/rendering/manifests/render_manifest_temporal_v3_gate0_epoch011_route4683_history_zero.json
-```
-
-Interpretation:
-
-- `real` better than `repeat_current` and `zero`: temporal tokens carry useful history.
-- `real` similar to `repeat_current`: temporal tokens may be used, but not for motion.
-- `real` similar to `zero`: temporal tokens are probably ignored.
-- `zero` better than `real`: temporal tokens may be harmful or noisy.
+- Before or alongside v4: run a no-commentary/direct-driving diagnostic.
+- After v4 early checkpoints: repeat the real/repeat-current/zero diagnostic on route `4683`.
+- For thesis ablation: train the same temporal model with repeated current frames, to test whether any gain comes from real history or just extra tokens/parameters.
