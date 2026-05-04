@@ -1,3 +1,5 @@
+import os
+
 import torch
 from torch import nn
 from typing import List, Optional
@@ -159,16 +161,41 @@ class LingoInternVLModel(nn.Module):
                 )
 
                 if temporal_encoder is not None:
+                    temporal_history_mode = os.environ.get("TEMPORAL_HISTORY_MODE", "real").strip().lower()
+                    temporal_history_mode = temporal_history_mode.replace("-", "_")
+                    if temporal_history_mode not in {"real", "repeat_current", "zero"}:
+                        raise ValueError(
+                            "TEMPORAL_HISTORY_MODE must be one of: real, repeat_current, zero. "
+                            f"Got: {temporal_history_mode}"
+                        )
+
                     temporal_dtype = next(temporal_encoder.parameters()).dtype
-                    past_frame_embeds = frame_features[:, :-1].to(dtype=temporal_dtype)
-                    if getattr(temporal_encoder, "uses_current_frame", False):
-                        current_frame_embeds_for_temporal = frame_features[:, -1].to(dtype=temporal_dtype)
-                        temporal_embeds = temporal_encoder(
-                            past_frame_embeds,
-                            current_frame_tokens=current_frame_embeds_for_temporal,
-                        ).to(dtype=inputs_embeds.dtype)
+                    if temporal_history_mode == "zero":
+                        temporal_embeds = inputs_embeds.new_zeros(
+                            frame_features.size(0),
+                            temporal_encoder.num_queries,
+                            current_frame_embeds.size(-1),
+                        )
                     else:
-                        temporal_embeds = temporal_encoder(past_frame_embeds).to(dtype=inputs_embeds.dtype)
+                        if temporal_history_mode == "repeat_current":
+                            past_frame_embeds = frame_features[:, -1:].expand(
+                                -1,
+                                frame_features.size(1) - 1,
+                                -1,
+                                -1,
+                            )
+                        else:
+                            past_frame_embeds = frame_features[:, :-1]
+
+                        past_frame_embeds = past_frame_embeds.to(dtype=temporal_dtype)
+                        if getattr(temporal_encoder, "uses_current_frame", False):
+                            current_frame_embeds_for_temporal = frame_features[:, -1].to(dtype=temporal_dtype)
+                            temporal_embeds = temporal_encoder(
+                                past_frame_embeds,
+                                current_frame_tokens=current_frame_embeds_for_temporal,
+                            ).to(dtype=inputs_embeds.dtype)
+                        else:
+                            temporal_embeds = temporal_encoder(past_frame_embeds).to(dtype=inputs_embeds.dtype)
                     inputs_embeds = self.fill_special_token_embeddings(
                         inputs_embeds,
                         input_ids,

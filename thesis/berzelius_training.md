@@ -361,6 +361,10 @@ ${EVAL_OUT_ROOT}/<agent_name>/bench2drive/<seed>/
 - Dataset frames are saved every `5` CARLA ticks.
 - With `history_stride=1`, inference samples every `1 * 5` simulator ticks.
 - Override inference spacing only if needed with `TEMPORAL_INFERENCE_STRIDE=<sim_steps>`.
+- Diagnostic rendering can override temporal history with `TEMPORAL_HISTORY_MODE`:
+  - `real`: normal history
+  - `repeat_current`: replace past features with copies of the current-frame features
+  - `zero`: keep the normal current image tokens but fill `<TEMP_CONTEXT>` with zeros
 - Normal image tokens receive the current frame.
 - Q-former temporal tokens receive only past frames.
 - Delta-feature temporal tokens use current-vs-past InternVL feature differences.
@@ -512,3 +516,31 @@ Useful thesis ablations:
 - Parameter-matched no-temporal control: keep temporal module capacity but replace past frames with current-frame copies.
 - Temporal-history diagnostic: compare real history with repeated-current or shuffled history during rendering.
 - No-COT diagnostic: evaluate selected routes with direct waypoint prediction instead of generated commentary first.
+
+## 14. Temporal Token Usage Diagnostic
+
+Purpose: test whether the trained model actually uses `<TEMP_CONTEXT>`.
+
+Prepared route `4683` manifests for v3 `epoch=011`:
+
+- `thesis/rendering/manifests/render_manifest_temporal_v3_gate0_epoch011_route4683_history_real.json`
+- `thesis/rendering/manifests/render_manifest_temporal_v3_gate0_epoch011_route4683_history_repeat_current.json`
+- `thesis/rendering/manifests/render_manifest_temporal_v3_gate0_epoch011_route4683_history_zero.json`
+
+Run all three from `temporal-module`:
+
+```bash
+cd "${REPO_DIR}"
+source thesis/env.sh
+
+python thesis/rendering/submit_render_jobs.py --manifest thesis/rendering/manifests/render_manifest_temporal_v3_gate0_epoch011_route4683_history_real.json
+python thesis/rendering/submit_render_jobs.py --manifest thesis/rendering/manifests/render_manifest_temporal_v3_gate0_epoch011_route4683_history_repeat_current.json
+python thesis/rendering/submit_render_jobs.py --manifest thesis/rendering/manifests/render_manifest_temporal_v3_gate0_epoch011_route4683_history_zero.json
+```
+
+Interpretation:
+
+- `real` better than `repeat_current` and `zero`: temporal tokens carry useful history.
+- `real` similar to `repeat_current`: temporal tokens may be used, but not for motion.
+- `real` similar to `zero`: temporal tokens are probably ignored.
+- `zero` better than `real`: temporal tokens may be harmful or noisy.

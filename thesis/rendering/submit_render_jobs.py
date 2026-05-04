@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -175,6 +176,14 @@ def slurm_text(cfg, route_id, seed, p, render_only=False):
   world_port_end = min(world_port_start + port_stride - 1, 19999)
   tm_port_start = min(32000 + case_index * port_stride, 39999)
   tm_port_end = min(tm_port_start + port_stride - 1, 39999)
+  temporal_history_mode = str(
+    cfg.get("temporal_history_mode", os.environ.get("TEMPORAL_HISTORY_MODE", "real"))
+  ).strip().lower().replace("-", "_")
+  if temporal_history_mode not in {"real", "repeat_current", "zero"}:
+    raise ValueError(
+      "temporal_history_mode must be one of: real, repeat_current, zero. "
+      f"Got: {temporal_history_mode}"
+    )
 
   return f'''#!/bin/bash
 #SBATCH --job-name=render_{route_id}_s{seed}
@@ -255,6 +264,8 @@ find_free_port() {{
 export DEBUG_VIZ="$DEBUG_VIZ"
 export DEBUG_STRIDE="$DEBUG_STRIDE"
 export DEBUG_SAVE_LANGUAGE="$DEBUG_SAVE_LANGUAGE"
+export TEMPORAL_HISTORY_MODE={shlex.quote(temporal_history_mode)}
+log "Temporal history mode: $TEMPORAL_HISTORY_MODE"
 
 if [[ "$DEBUG_VIZ" -eq 1 ]]; then
   mkdir -p "$FRAME_DIR/rgb_front" "$FRAME_DIR/rgb_left" "$FRAME_DIR/rgb_right" "$FRAME_DIR/rgb_rear" "$FRAME_DIR/meta"
