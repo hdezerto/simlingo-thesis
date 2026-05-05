@@ -61,6 +61,7 @@ class DrivingModel(pl.LightningModule):
         self.prediction = {}
         
         self.predict_language = True
+        self.condition_action_on_language = True
         
         self.cfg_data_module = cfg_data_module
         
@@ -173,62 +174,49 @@ class DrivingModel(pl.LightningModule):
                     attention_mask=attention_mask,
                     # position_ids=position_ids,
                 )
-                
-                inputs_driving = self.adaptors.driving(driving_input)
-                input_embed_concat = torch.cat((input_embeds, inputs_driving["inputs"][b_idx].unsqueeze(0)), dim=1)
-                features, logits = self.language_model.forward(input_embed_concat)
 
-                len_driving = inputs_driving["inputs"].size(1)
+                if self.condition_action_on_language:
+                    inputs_driving = self.adaptors.driving(driving_input)
+                    input_embed_concat = torch.cat((input_embeds, inputs_driving["inputs"][b_idx].unsqueeze(0)), dim=1)
+                    features, logits = self.language_model.forward(input_embed_concat)
 
-                driving_features = features[:, -len_driving:]
-                driving_logits = logits[:, -len_driving:]
-                predictions = self.adaptors.driving.get_predictions(driving_features, driving_logits)
-                    
-                for k, v in predictions.items():
-                    if v is not None:
-                        if hasattr(self, k) and getattr(self, k) is not None:
-                            if isinstance(v, torch.Tensor):
-                                setattr(self, k, torch.cat((getattr(self, k), v), dim=0))
-                            elif isinstance(v, list):
-                                getattr(self, k).append(v)
-                            else:
-                                raise NotImplementedError(f"Type of {k} not supported")
-                        else:
-                            setattr(self, k, v)
+                    len_driving = inputs_driving["inputs"].size(1)
+
+                    driving_features = features[:, -len_driving:]
+                    driving_logits = logits[:, -len_driving:]
+                    predictions = self.adaptors.driving.get_predictions(driving_features, driving_logits)
+                    self._set_predictions(predictions, append=True)
                                 
                 self.language.append(self.tokenizer.batch_decode(sampled_tokens, skip_special_tokens=True)[0])
-        else:
-            # single forward pass same as during training so we can use the same function
-            features = self.forward_model(driving_input, adaptor_dict)
-            outputs_by_adaptor = self.adaptors.split_outputs_by_adaptor(adaptor_dict, features)
-            predictions = self.adaptors.driving.get_predictions(outputs_by_adaptor['driving'])
 
-            for k, v in predictions.items():
-                if v is not None:
-                    setattr(self, k, v)
+            if not self.condition_action_on_language:
+                self._predict_driving_from_prepared_adaptor_dict(adaptor_dict)
+        else:
+            self._predict_driving_from_prepared_adaptor_dict(adaptor_dict)
 
         return self.speed_wps, self.route, self.language
 
+    def _set_predictions(self, predictions: Dict, append: bool = False) -> None:
+        for k, v in predictions.items():
+            if v is None:
+                continue
+            if append and hasattr(self, k) and getattr(self, k) is not None:
+                if isinstance(v, torch.Tensor):
+                    setattr(self, k, torch.cat((getattr(self, k), v), dim=0))
+                elif isinstance(v, list):
+                    getattr(self, k).append(v)
+                else:
+                    raise NotImplementedError(f"Type of {k} not supported")
+            else:
+                setattr(self, k, v)
 
-    def forward_model(self, 
-                      driving_input: DrivingInput, 
-                      adaptor_dict: Dict, 
-                      driving_labels: DrivingLabel = None,
-                    #   language_embeds: Tensor = None
-                      ) -> Tensor:
-        """
-        Forward model conditioned on the given driving input.
-        """
-        
-        adaptor_dict = self.vision_model.image_encoder.replace_placeholder_tokens(
-            adaptor_dict = adaptor_dict,
-            pixel_values = driving_input.camera_images,
-            placeholder_values = driving_input.prompt.placeholder_values,
-            wp_encoder = self.wp_encoder,
-            temporal_encoder = self.temporal_encoder,
-            precomputed_frame_features = driving_input.precomputed_frame_features,
-        )
+    def _predict_driving_from_prepared_adaptor_dict(self, adaptor_dict: Dict) -> None:
+        features, _ = self._forward_prepared_adaptor_dict(adaptor_dict)
+        outputs_by_adaptor = self.adaptors.split_outputs_by_adaptor(adaptor_dict, features)
+        predictions = self.adaptors.driving.get_predictions(outputs_by_adaptor['driving'])
+        self._set_predictions(predictions)
 
+    def _forward_prepared_adaptor_dict(self, adaptor_dict: Dict) -> Tuple[Tensor, Tensor]:
         position_ids = None
         adaptor_embeds = adaptor_dict["inputs"]
         adaptor_mask = adaptor_dict['inputs_mask']
@@ -256,6 +244,28 @@ class DrivingModel(pl.LightningModule):
             [logits.size(1) - adaptor_embeds.size(1), adaptor_embeds.size(1)], dim=1
         )
         return adaptor_features, adaptor_logits
+
+
+    def forward_model(self, 
+                      driving_input: DrivingInput, 
+                      adaptor_dict: Dict, 
+                      driving_labels: DrivingLabel = None,
+                    #   language_embeds: Tensor = None
+                      ) -> Tensor:
+        """
+        Forward model conditioned on the given driving input.
+        """
+        
+        adaptor_dict = self.vision_model.image_encoder.replace_placeholder_tokens(
+            adaptor_dict = adaptor_dict,
+            pixel_values = driving_input.camera_images,
+            placeholder_values = driving_input.prompt.placeholder_values,
+            wp_encoder = self.wp_encoder,
+            temporal_encoder = self.temporal_encoder,
+            precomputed_frame_features = driving_input.precomputed_frame_features,
+        )
+
+        return self._forward_prepared_adaptor_dict(adaptor_dict)
     
 
     def forward_loss(self, example: DrivingExample, per_sample=False) -> TrainingOutput:

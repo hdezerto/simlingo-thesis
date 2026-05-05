@@ -265,6 +265,8 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
             state_dict = torch.load(self.config_path, map_location="cpu")
         self.model.load_state_dict(state_dict)
         self.model.eval()
+        self.condition_action_on_language = _env_flag("SIMLINGO_CONDITION_ACTION_ON_LANGUAGE", True)
+        self.model.condition_action_on_language = self.condition_action_on_language
         self.image_tensor_dtype = self._get_image_tensor_dtype()
         self.camera_intrinsics_tensor = torch.repeat_interleave(
             get_camera_intrinsics(448, 448, 110).unsqueeze(0),
@@ -787,6 +789,7 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
             'steer': float(control.steer),
             'throttle': float(control.throttle),
             'brake': float(control.brake),
+            'condition_action_on_language': bool(getattr(self, 'condition_action_on_language', True)),
         }
         with meta_path.open('w', encoding='utf-8') as f:
             json.dump(meta, f)
@@ -898,7 +901,14 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
                 
                 y_start = H + 20 + y_dist*(idx+1)
 
-                lines = textwrap.wrap(f"Answer: {language[0]}", width=line_width)
+                if not getattr(self, "condition_action_on_language", True):
+                    lines = textwrap.wrap("Mode: no-CoT action (commentary not used for driving)", width=line_width)
+                    for idx, line in enumerate(lines):
+                            draw.text((10, y_start + y_dist*(idx)), line, font=font, fill=(255, 255, 255, 255))
+                    y_start = y_start + y_dist*(idx+1)
+
+                answer = language[0] if len(language) > 0 else "<not generated>"
+                lines = textwrap.wrap(f"Answer: {answer}", width=line_width)
                 for idx, line in enumerate(lines):
                         draw.text((10, y_start + y_dist*(idx)), line, font=font, fill=(255, 255, 255, 255))
 
@@ -955,6 +965,7 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
                     'steer': float(control.steer),
                     'throttle': float(control.throttle),
                     'brake': float(control.brake),
+                    'condition_action_on_language': bool(getattr(self, 'condition_action_on_language', True)),
                 }
                 with meta_path.open('w', encoding='utf-8') as f:
                     json.dump(meta, f)

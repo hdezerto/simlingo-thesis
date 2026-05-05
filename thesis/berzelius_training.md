@@ -431,31 +431,7 @@ projinfo -m berzelius-2025-435
 - User consumption since `2026-05-01`: `1102.25 h`
 - Approximate project hours remaining: `3670.99 h`
 
-## 13. Recommended Next Run (v4)
-
-Run v4 Q-former:
-
-- config: `simlingo_training/config/experiment/temporal_qformer_v4_nogate.yaml`
-- launcher: `thesis/slurm/train_temporal_v4_nogate.slurm`
-- keep `num_queries=16`
-- set `temporal_model.gate_enabled=false`
-- set `freeze_adaptors=false`
-- keep `hist_len=5`, `history_stride=1`, `batch_size=12`, `max_epochs=14`
-
-Why:
-
-- ORION is the closest reference point and found `16` history queries better than `32`.
-- v3 used `16` queries but the learned gate stayed around `0.503`, so disabling the gate directly tests whether it limited temporal influence.
-- Unfreezing adaptors lets the language/driving bridges adapt to `<TEMP_CONTEXT>`.
-- The main vision encoder, base LLM weights, and waypoint encoder remain frozen, so the run is stronger than v3 but still controlled.
-
-Evaluate early:
-
-- render selected failures at `epoch=005` or `epoch=007`
-- include route `4683`
-- compare real history against repeated-current and zero history if the result is unclear
-
-## 14. Diagnostics After v3
+## 13. Diagnostics After v3
 
 Temporal-history diagnostic on route `4683`, v3 `epoch=011`:
 
@@ -483,3 +459,62 @@ Best follow-ups:
 - Before or alongside v4: run a no-commentary/direct-driving diagnostic.
 - After v4 early checkpoints: repeat the real/repeat-current/zero diagnostic on route `4683`.
 - For thesis ablation: train the same temporal model with repeated current frames, to test whether any gain comes from real history or just extra tokens/parameters.
+
+## 14. Recommended Next Run (v4)
+
+Run v4 Q-former:
+
+- config: `simlingo_training/config/experiment/temporal_qformer_v4_nogate.yaml`
+- launcher: `thesis/slurm/train_temporal_v4_nogate.slurm`
+- keep `num_queries=16`
+- set `temporal_model.gate_enabled=false`
+- set `freeze_adaptors=false`
+- keep `hist_len=5`, `history_stride=1`, `batch_size=12`, `max_epochs=14`
+
+Why:
+
+- ORION is the closest reference point and found `16` history queries better than `32`.
+- v3 used `16` queries but the learned gate stayed around `0.503`, so disabling the gate directly tests whether it limited temporal influence.
+- Unfreezing adaptors lets the language/driving bridges adapt to `<TEMP_CONTEXT>`.
+- The main vision encoder, base LLM weights, and waypoint encoder remain frozen, so the run is stronger than v3 but still controlled.
+
+Evaluate early:
+
+- render selected failures at `epoch=005` or `epoch=007`
+- include route `4683`
+- compare real history against repeated-current and zero history if the result is 
+
+
+
+
+
+
+---------
+
+# Random to delete:
+
+So the full useful set is:
+
+- Temporal signal exists
+
+Do past frames/delta features actually contain motion information?
+Especially: do moving vehicles create visible feature differences?
+
+- Model attends/uses temporal tokens
+
+Do outputs change between real, repeat_current, and zero history?
+If not, temporal tokens may be ignored.
+
+- Prompting can make the model use temporal context
+
+Try a motion-aware prompt.
+If this helps, the signal may exist but the LLM needs stronger instruction.
+
+
+
+
+- Commentary conditioning bottleneck
+
+Your no-CoT render tests this.
+If no-CoT helps, generated commentary is hurting driving.
+If no-CoT does not help, the problem is likely deeper than just the commentary text.
