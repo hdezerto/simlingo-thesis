@@ -378,13 +378,15 @@ Temporal methods:
 Delta feature flow:
 
 ```text
-current InternVL tokens: [B, 256, D]
-past InternVL tokens:    [B, 4, 256, D]
-signed_delta = current - past
-absolute_delta = abs(current - past)
-weighted average over time with delta_decay=0.9
-pool 16x16 -> 8x8
-64 temporal tokens
+current InternVL tokens: [B, 512, 896]
+past InternVL tokens:    [B, 4, 512, 896]
+signed_delta = current - past                       -> [B, 4, 512, 896]
+absolute_delta = abs(current - past)                -> [B, 4, 512, 896]
+concat signed + absolute delta                      -> [B, 4, 512, 1792]
+weighted average over time with delta_decay=0.9     -> [B, 512, 1792]
+delta projection                                    -> [B, 512, 896]
+pool 512 visual tokens -> 64 temporal tokens        -> [B, 64, 896]
+token projection + output norm + optional gate      -> [B, 64, 896]
 ```
 
 Evaluation behavior:
@@ -516,9 +518,9 @@ Best follow-ups:
 - After v4 early checkpoints: repeat the real/repeat-current/zero diagnostic on route `4683`.
 - If time allows, train a no-history control: same temporal module, but train with repeated current frames instead of real past frames.
 
-## 13. Recommended Next Run (v4)
+## 13. Current Training Run (v4)
 
-Run v4 Q-former:
+v4 Q-former is running:
 
 - config: `simlingo_training/config/experiment/temporal_qformer_v4_nogate.yaml`
 - launcher: `thesis/slurm/train_temporal_v4_nogate.slurm`
@@ -536,7 +538,7 @@ Why:
 
 Evaluate early:
 
-- render selected failures at `epoch=005` or `epoch=007`
+- render selected failures from `epoch=005` or `epoch=007`
 - include route `4683`
 - compare real history against repeated-current and zero history if the route remains unstable
 - keep normal commentary-conditioned driving for the main comparison
@@ -544,15 +546,15 @@ Evaluate early:
 
 ## 14. Temporary Resource Snapshot
 
-Checked on `2026-05-06`:
+Checked on `2026-05-07`:
 
 ```bash
 projinfo -m berzelius-2025-435
 ```
 
 - Monthly allocation: `5000 h/month`
-- Project consumption since `2026-05-01`: `1532.77 h`
-- User consumption since `2026-05-01`: `1236.49 h`
-- Approximate project hours remaining: `3467.23 h`
+- Project consumption since `2026-05-01`: `3625.55 h`
+- User consumption since `2026-05-01`: `1741.07 h`
+- Approximate project hours remaining: `1374.45 h`
 - Active job at check: `16498473`, `simlingo_temporal_v4_nogate`, running on `8` GPUs
 - Accounting may lag while jobs are running
