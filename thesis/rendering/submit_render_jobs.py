@@ -240,6 +240,9 @@ DEBUG_VIZ={1 if _truthy(cfg.get("debug_viz", False)) else 0}
 DEBUG_STRIDE={int(cfg.get("debug_stride", 5))}
 DEBUG_SAVE_LANGUAGE={1 if _truthy(cfg.get("debug_save_language", True)) else 0}
 SIMLINGO_CONDITION_ACTION_ON_LANGUAGE={1 if _truthy(cfg.get("condition_action_on_language", True)) else 0}
+TEMPORAL_SIGNAL_DIAGNOSTIC={1 if _truthy(cfg.get("temporal_signal_diagnostic", False)) else 0}
+TEMPORAL_SIGNAL_DIAGNOSTIC_STRIDE={int(cfg.get("temporal_signal_diagnostic_stride", cfg.get("debug_stride", 5)))}
+TEMPORAL_SIGNAL_DIAGNOSTIC_HEATMAPS={1 if _truthy(cfg.get("temporal_signal_diagnostic_heatmaps", True)) else 0}
 FORCE_RENDER_ONLY={1 if render_only else 0}
 REUSE_EXISTING_FRAMES={1 if render_only else 0}
 log "Case route={route_id} seed={seed}"
@@ -247,6 +250,7 @@ log "Frame render dir: $FRAME_DIR"
 log "MP4 output: $MP4_OUT"
 log "Debug viz: $DEBUG_VIZ, stride: $DEBUG_STRIDE, save language: $DEBUG_SAVE_LANGUAGE"
 log "Condition action on language: $SIMLINGO_CONDITION_ACTION_ON_LANGUAGE"
+log "Temporal signal diagnostic: $TEMPORAL_SIGNAL_DIAGNOSTIC, stride: $TEMPORAL_SIGNAL_DIAGNOSTIC_STRIDE, heatmaps: $TEMPORAL_SIGNAL_DIAGNOSTIC_HEATMAPS"
 log "Render-only mode: $FORCE_RENDER_ONLY"
 log "Evaluator max attempts: {max_attempts}"
 
@@ -267,6 +271,9 @@ export DEBUG_VIZ="$DEBUG_VIZ"
 export DEBUG_STRIDE="$DEBUG_STRIDE"
 export DEBUG_SAVE_LANGUAGE="$DEBUG_SAVE_LANGUAGE"
 export SIMLINGO_CONDITION_ACTION_ON_LANGUAGE="$SIMLINGO_CONDITION_ACTION_ON_LANGUAGE"
+export TEMPORAL_SIGNAL_DIAGNOSTIC="$TEMPORAL_SIGNAL_DIAGNOSTIC"
+export TEMPORAL_SIGNAL_DIAGNOSTIC_STRIDE="$TEMPORAL_SIGNAL_DIAGNOSTIC_STRIDE"
+export TEMPORAL_SIGNAL_DIAGNOSTIC_HEATMAPS="$TEMPORAL_SIGNAL_DIAGNOSTIC_HEATMAPS"
 export TEMPORAL_HISTORY_MODE={shlex.quote(temporal_history_mode)}
 log "Temporal history mode: $TEMPORAL_HISTORY_MODE"
 

@@ -361,8 +361,11 @@ Temporal input:
 
 - Training frames are ordered old-to-new; the last frame is current.
 - Dataset frames are saved every `5` CARLA ticks.
-- With `history_stride=1`, inference samples history every `5` simulator ticks.
-- Override inference spacing only if needed with `TEMPORAL_INFERENCE_STRIDE=<sim_steps>`.
+- Online CARLA inference calls the agent every simulator tick, so the model predicts control every tick.
+- The temporal window is sampled from the feature buffer at the training spacing.
+- With `history_stride=1`, the history spacing is `1 * 5 = 5` simulator ticks.
+- Example: at simulator tick `100`, `hist_len=5` uses ticks `80, 85, 90, 95, 100`.
+- Override temporal history spacing only if needed with `TEMPORAL_INFERENCE_STRIDE=<sim_steps>`; this does not change how often CARLA calls the agent.
 - Online inference stores encoded InternVL features in `frame_feature_buffer`, so each current frame is encoded once and reused as history later.
 
 Temporal methods:
@@ -371,6 +374,18 @@ Temporal methods:
 | --- | --- | --- |
 | Q-former | `simlingo_training.models.temporal.qformer.TemporalQFormer` | Past-frame InternVL features compressed into `<TEMP_CONTEXT>` tokens |
 | Delta feature | `simlingo_training.models.temporal.delta_feature.TemporalDeltaFeatureEncoder` | Current-vs-past InternVL feature differences pooled into `<TEMP_CONTEXT>` tokens |
+
+Delta feature flow:
+
+```text
+current InternVL tokens: [B, 256, D]
+past InternVL tokens:    [B, 4, 256, D]
+signed_delta = current - past
+absolute_delta = abs(current - past)
+weighted average over time with delta_decay=0.9
+pool 16x16 -> 8x8
+64 temporal tokens
+```
 
 Evaluation behavior:
 
@@ -397,43 +412,48 @@ Inference fixes:
 | v3 Q-former gate 0 | Same as v2, but `gate_init=0.0` | Full `epoch=011` eval: driving score `86.09 +/- 0.70`, success rate `67.42% +/- 0.77%`; gate stayed about `0.503`; current route `4683` diagnostic did not show robust improvement | Stronger initial gate helped some cases, but not consistently |
 | Delta feature v1 | `hist_len=5`, `queries=64`, `gate_init=0.0`, `include_absolute_delta=true`, `delta_decay=0.9`, `batch=12`, `epochs=14` | Trained through `epoch=013`; selected renders not clearly better than v3; still produced problematic stopped-vehicle commentary on `4683` | Useful thesis ablation, but not a clear fix |
 
-Important v3 route `4683` note:
+## 12. Diagnostic Tests And Results
 
-- An early selected `epoch=011` render looked successful, but it was produced before current inference fixes and had CARLA actor-spawn warnings.
-- Current-code diagnostic for v3 `epoch=011`:
-  - `real`: score `42`, `1` vehicle collision, scenario timeout
-  - `repeat_current`: score `36`, `2` vehicle collisions
-  - `zero`: score `60`, `1` vehicle collision
-- Conclusion: v3 does not robustly solve route `4683`; changing history mode changes the rollout, but real history was not reliably better.
+These tests are small controlled renders, not full benchmark results.
 
-Delta feature flow:
+### Diagnostic Questions
 
-```text
-current InternVL tokens: [B, 256, D]
-past InternVL tokens:    [B, 4, 256, D]
-signed_delta = current - past
-absolute_delta = abs(current - past)
-weighted average over time with delta_decay=0.9
-pool 16x16 -> 8x8
-64 temporal tokens
-```
+1. Does temporal signal exist in the encoded visual features?
+2. Do temporal tokens change the closed-loop rollout?
+3. Is generated commentary conditioning the main bottleneck?
+4. Can a motion-aware prompt make the model use temporal context better?
 
-## 12. Current Resources
+### 1. Temporal Signal Exists
 
-Checked on `2026-05-04`:
+Purpose: check whether past-frame and delta features contain visible motion
+information, especially around moving vehicles.
 
-```bash
-projinfo -m berzelius-2025-435
-```
+Current tests:
 
-- Monthly allocation: `5000 h/month`
-- Project consumption since `2026-05-01`: `1329.01 h`
-- User consumption since `2026-05-01`: `1102.25 h`
-- Approximate project hours remaining: `3670.99 h`
+- Q-former v3 `epoch=011`, route `4683`: real history vs repeated-current history vs zero temporal tokens
+- Delta feature `epoch=013`, route `4683`: same test, plus feature-delta heatmaps
 
-## 13. Diagnostics After v3
+Representative result at frame `185`, near the dynamic interaction:
 
-Temporal-history diagnostic on route `4683`, v3 `epoch=011`:
+| Method | Input feature delta mean | Real vs repeat-current L2 | Real vs repeat-current cosine | Interpretation |
+| --- | ---: | ---: | ---: | --- |
+| Q-former v3 | `11.93` | `2.00` | `0.986` | input changes exist, but Q-former tokens remain very similar to fake-history tokens |
+| Delta feature v1 | `21.90` | `19.81` | `-0.283` | delta tokens change strongly when real history is used |
+
+Delta heatmaps saved for frame `185`:
+
+- `00185_feature_delta_mean.jpg`: unweighted mean of current-vs-past feature-delta magnitudes across the history window
+- `00185_feature_delta_latest.jpg`: current-vs-closest-past feature-delta magnitude
+
+Interpretation:
+
+- Q-former v3 appears to compress real history into tokens close to repeated-current history.
+- Delta feature v1 produces motion-sensitive temporal tokens, but route `4683` still collided.
+- This suggests the remaining bottleneck is likely downstream of the temporal encoder, or in the supervision/labels, not simply absence of temporal signal.
+
+### 2. Temporal History Changes The Rollout
+
+Route `4683`, v3 `epoch=011`:
 
 | Mode | Result |
 | --- | --- |
@@ -447,20 +467,56 @@ Conclusion:
 - Temporal history affects the rollout, but real history was not better than ablated history.
 - The old selected-render success for route `4683` should not be treated as strong evidence because it used older inference code and had actor-spawn warnings.
 
-Most likely remaining bottlenecks:
+### 3. Commentary Conditioning Bottleneck
+
+Purpose: check whether generated commentary is the main reason driving fails.
+The model still generates commentary for the rendered video, but the driving
+heads do not condition on that generated text.
+
+v3 `epoch=011`, selected routes:
+
+| Route | Normal CoT action | No-CoT action | Interpretation |
+| --- | --- | --- | --- |
+| `11755` | score `60`, vehicle collision | score `60`, vehicle collision | no improvement |
+| `3936` | score `60`, vehicle collision | score `49`, scenario timeout | worse |
+| `4183` | score `60`, vehicle collision | score `60`, vehicle collision | no improvement |
+| `4468` | score `60`, vehicle collision | score `60`, vehicle collision | no improvement |
+| `4683` | score `100`, no collision | score `60`, vehicle collision | worse |
+
+Conclusion:
+
+- no-CoT action did not improve the selected failure cases
+- generated commentary conditioning is probably not the main easy bottleneck
+- keep normal commentary-conditioned driving for main evaluation
+- use no-CoT only as a diagnostic, because it differs from training
+
+### 4. Prompting Diagnostic
+
+Purpose: test whether the temporal signal exists but the LLM needs clearer
+instruction to reason about motion.
+
+Status: not run yet.
+
+Possible test:
+
+- render the same selected routes with a motion-aware prompt
+- compare generated commentary and collisions against the normal prompt
+- treat this as a diagnostic, not as main evidence, because changing the prompt changes the evaluation distribution
+
+### Remaining Hypotheses
 
 - temporal tokens are noisy or not used in the right way
-- generated commentary may still mislead the driving heads
 - motion supervision may be too weak or diluted
 - labels may overuse stopped-vehicle wording
+- Q-former compression may lose small moving vehicles
+- waypoints/control may fail even when commentary improves
 
 Best follow-ups:
 
-- Before or alongside v4: run a no-commentary/direct-driving diagnostic.
 - After v4 early checkpoints: repeat the real/repeat-current/zero diagnostic on route `4683`.
-- For thesis ablation: train the same temporal model with repeated current frames, to test whether any gain comes from real history or just extra tokens/parameters.
+- If time allows, train a no-history control: same temporal module, but train with repeated current frames instead of real past frames.
 
-## 14. Recommended Next Run (v4)
+## 13. Recommended Next Run (v4)
 
 Run v4 Q-former:
 
@@ -482,39 +538,21 @@ Evaluate early:
 
 - render selected failures at `epoch=005` or `epoch=007`
 - include route `4683`
-- compare real history against repeated-current and zero history if the result is 
+- compare real history against repeated-current and zero history if the route remains unstable
+- keep normal commentary-conditioned driving for the main comparison
+- use no-CoT/direct-driving only as a diagnostic, because the v3 selected no-CoT renders were not better
 
+## 14. Temporary Resource Snapshot
 
+Checked on `2026-05-06`:
 
+```bash
+projinfo -m berzelius-2025-435
+```
 
-
-
----------
-
-# Random to delete:
-
-So the full useful set is:
-
-- Temporal signal exists
-
-Do past frames/delta features actually contain motion information?
-Especially: do moving vehicles create visible feature differences?
-
-- Model attends/uses temporal tokens
-
-Do outputs change between real, repeat_current, and zero history?
-If not, temporal tokens may be ignored.
-
-- Prompting can make the model use temporal context
-
-Try a motion-aware prompt.
-If this helps, the signal may exist but the LLM needs stronger instruction.
-
-
-
-
-- Commentary conditioning bottleneck
-
-Your no-CoT render tests this.
-If no-CoT helps, generated commentary is hurting driving.
-If no-CoT does not help, the problem is likely deeper than just the commentary text.
+- Monthly allocation: `5000 h/month`
+- Project consumption since `2026-05-01`: `1532.77 h`
+- User consumption since `2026-05-01`: `1236.49 h`
+- Approximate project hours remaining: `3467.23 h`
+- Active job at check: `16498473`, `simlingo_temporal_v4_nogate`, running on `8` GPUs
+- Accounting may lag while jobs are running

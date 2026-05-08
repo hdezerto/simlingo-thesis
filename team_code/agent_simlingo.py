@@ -48,6 +48,7 @@ from team_code.simlingo_utils import (
     get_rotation_matrix,
     project_points,
 )
+from team_code.temporal_signal_diagnostics import TemporalSignalDiagnostic
 
 # Configure pytorch for maximum performance
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -361,6 +362,25 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
             for view_name in ANALYSIS_VIEW_SPECS:
                 (self.frame_render_dir / f'rgb_{view_name}').mkdir(parents=True, exist_ok=True)
             (self.frame_render_dir / 'meta').mkdir(parents=True, exist_ok=True)
+
+        self.temporal_signal_diagnostic = None
+        if _env_flag('TEMPORAL_SIGNAL_DIAGNOSTIC', False):
+            temporal_signal_root = (
+                self.frame_render_dir / 'temporal_signal'
+                if self.frame_render_dir is not None
+                else Path(self.debug_save_path) / 'temporal_signal'
+            )
+            self.temporal_signal_diagnostic = TemporalSignalDiagnostic(
+                model=self.model,
+                device=self.device,
+                output_root=temporal_signal_root,
+                history_stride=self.history_stride,
+                temporal_inference_stride=self.temporal_inference_stride,
+                num_image_tokens_per_patch=self.num_image_tokens_per_patch,
+                stride=max(1, int(os.environ.get('TEMPORAL_SIGNAL_DIAGNOSTIC_STRIDE', str(self.debug_stride)))),
+                save_heatmaps=_env_flag('TEMPORAL_SIGNAL_DIAGNOSTIC_HEATMAPS', True),
+            )
+            print(self.temporal_signal_diagnostic.describe())
             
     def input_thread(self):
         while self.running:
@@ -829,6 +849,11 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
             pred_speed_wps, pred_route, language = self.model(model_input)
         pred_speed_wps = pred_speed_wps.float() if pred_speed_wps is not None else None
         pred_route = pred_route.float() if pred_route is not None else None
+        if self.temporal_signal_diagnostic is not None:
+            self.temporal_signal_diagnostic.write_if_due(
+                model_input.precomputed_frame_features,
+                max(self.step, 0),
+            )
 
         # prepare velocity input
         gt_velocity = tick_data['speed']
