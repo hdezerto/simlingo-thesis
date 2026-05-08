@@ -65,7 +65,7 @@ class TemporalSignalDiagnostic:
         current_frame_features = frame_features[:, -1]
         repeated_current_features = current_frame_features.unsqueeze(1).expand_as(past_frame_features)
 
-        with torch.autocast(
+        with torch.no_grad(), torch.autocast(
             device_type=self.device.type,
             dtype=torch.float16,
             enabled=self.device.type == "cuda",
@@ -78,8 +78,10 @@ class TemporalSignalDiagnostic:
         delta_norms = deltas.norm(dim=-1)
         per_history_mean = delta_norms.mean(dim=-1)[0]
         per_history_max = delta_norms.max(dim=-1).values[0]
-        mean_delta_by_patch = delta_norms.mean(dim=1)[0]
-        latest_delta_by_patch = delta_norms[:, -1][0]
+        weighted_delta_heatmaps = self._compute_weighted_delta_heatmaps(
+            past_frame_features,
+            current_frame_features,
+        )
 
         stats = {
             "frame_index": int(frame_index),
@@ -94,6 +96,7 @@ class TemporalSignalDiagnostic:
                 "per_history_frame_mean": [float(x.cpu()) for x in per_history_mean],
                 "per_history_frame_max": [float(x.cpu()) for x in per_history_max],
             },
+            "diagnostic_heatmaps": self._heatmap_stats(weighted_delta_heatmaps),
             "temporal_token_norm": {
                 "real": self._token_norm_stats(real_tokens),
                 "repeat_current": self._token_norm_stats(repeat_tokens),
@@ -114,14 +117,8 @@ class TemporalSignalDiagnostic:
             json.dump(stats, f, indent=2)
 
         if self.save_heatmaps:
-            self._save_heatmap(
-                mean_delta_by_patch,
-                self.heatmap_dir / f"{frame_index:05}_feature_delta_mean.jpg",
-            )
-            self._save_heatmap(
-                latest_delta_by_patch,
-                self.heatmap_dir / f"{frame_index:05}_feature_delta_latest.jpg",
-            )
+            for name, values in weighted_delta_heatmaps.items():
+                self._save_heatmap(values, self.heatmap_dir / f"{frame_index:05}_{name}.jpg")
 
     def _call_temporal_encoder(
         self,
@@ -148,6 +145,93 @@ class TemporalSignalDiagnostic:
             gate_info["raw"] = float(gate_float.cpu())
             gate_info["sigmoid"] = float(torch.sigmoid(gate_float).cpu())
         return gate_info
+
+    def _compute_weighted_delta_heatmaps(
+        self,
+        past_frame_features: torch.Tensor,
+        current_frame_features: torch.Tensor,
+    ):
+        signed_delta = current_frame_features.unsqueeze(1).float() - past_frame_features.float()
+        time_weights = self._time_weights(
+            signed_delta.size(1),
+            signed_delta.device,
+            signed_delta.dtype,
+        )
+        weight_view = time_weights.view(1, -1, 1, 1)
+        weight_sum = time_weights.sum().clamp_min(1e-12)
+
+        weighted_signed_delta = (signed_delta * weight_view).sum(dim=1) / weight_sum
+        weighted_abs_delta = (signed_delta.abs() * weight_view).sum(dim=1) / weight_sum
+        heatmaps = {
+            "weighted_signed_delta_norm": weighted_signed_delta.norm(dim=-1)[0],
+            "weighted_abs_delta_norm": weighted_abs_delta.norm(dim=-1)[0],
+            "latest_delta_norm": signed_delta[:, -1].norm(dim=-1)[0],
+        }
+
+        projected_motion_norm = self._projected_motion_norm(
+            past_frame_features,
+            current_frame_features,
+        )
+        if projected_motion_norm is not None:
+            heatmaps["projected_motion_norm"] = projected_motion_norm
+
+        return heatmaps
+
+    def _time_weights(
+        self,
+        num_past_frames: int,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        if hasattr(self.temporal_encoder, "get_time_weights"):
+            return self.temporal_encoder.get_time_weights(num_past_frames, device, dtype)
+        return torch.ones(num_past_frames, device=device, dtype=dtype)
+
+    def _projected_motion_norm(
+        self,
+        past_frame_features: torch.Tensor,
+        current_frame_features: torch.Tensor,
+    ) -> Optional[torch.Tensor]:
+        required_attrs = ("delta_projection", "motion_norm", "get_time_weights")
+        if not all(hasattr(self.temporal_encoder, attr) for attr in required_attrs):
+            return None
+
+        temporal_dtype = next(self.temporal_encoder.parameters()).dtype
+        was_training = self.temporal_encoder.training
+        self.temporal_encoder.eval()
+        try:
+            with torch.no_grad(), torch.autocast(
+                device_type=self.device.type,
+                dtype=torch.float16,
+                enabled=self.device.type == "cuda",
+            ):
+                past_tokens = past_frame_features.to(dtype=temporal_dtype)
+                current_tokens = current_frame_features.to(dtype=temporal_dtype).unsqueeze(1)
+                delta_tokens = current_tokens - past_tokens
+                if getattr(self.temporal_encoder, "include_absolute_delta", False):
+                    delta_tokens = torch.cat((delta_tokens, delta_tokens.abs()), dim=-1)
+
+                time_weights = self.temporal_encoder.get_time_weights(
+                    delta_tokens.size(1),
+                    device=delta_tokens.device,
+                    dtype=delta_tokens.dtype,
+                ).view(1, -1, 1, 1)
+                shared_delta_features = (delta_tokens * time_weights).sum(dim=1) / time_weights.sum()
+                motion_features = self.temporal_encoder.delta_projection(shared_delta_features)
+                motion_features = self.temporal_encoder.motion_norm(motion_features)
+            return motion_features.detach().float().norm(dim=-1)[0]
+        finally:
+            self.temporal_encoder.train(was_training)
+
+    @staticmethod
+    def _heatmap_stats(heatmaps):
+        return {
+            name: {
+                "mean": float(values.detach().float().mean().cpu()),
+                "max": float(values.detach().float().max().cpu()),
+            }
+            for name, values in heatmaps.items()
+        }
 
     def _patch_values_to_grid(self, values: np.ndarray) -> np.ndarray:
         values = np.asarray(values, dtype=np.float32).reshape(-1)
