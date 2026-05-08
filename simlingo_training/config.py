@@ -35,6 +35,7 @@ class TemporalModelConfig:
     gate_init: float = -2.0
     include_absolute_delta: bool = True
     delta_decay: float = 0.9
+    spatial_pooling: bool = True
 
     _target_: str = "simlingo_training.models.temporal.qformer.TemporalQFormer"
 

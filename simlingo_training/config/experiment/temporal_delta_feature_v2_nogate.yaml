@@ -29,6 +29,7 @@ model:
     gate_init: 0.0
     include_absolute_delta: true
     delta_decay: 0.9
+    spatial_pooling: true
 
 data_module:
   batch_size: 12

@@ -1,7 +1,8 @@
-from typing import Optional
+from typing import Optional, Tuple
 
 import math
 import torch
+import warnings
 from torch import nn
 import torch.nn.functional as F
 
@@ -28,6 +29,7 @@ class TemporalDeltaFeatureEncoder(nn.Module):
         gate_init: float = 0.0,
         include_absolute_delta: bool = True,
         delta_decay: float = 0.9,
+        spatial_pooling: bool = True,
         **_: Optional[object],
     ):
         super().__init__()
@@ -37,6 +39,8 @@ class TemporalDeltaFeatureEncoder(nn.Module):
         self.gate_enabled = gate_enabled
         self.include_absolute_delta = include_absolute_delta
         self.delta_decay = delta_decay
+        self.spatial_pooling = spatial_pooling
+        self._warned_spatial_pooling_fallback = False
 
         delta_input_size = hidden_size * (2 if include_absolute_delta else 1)
         self.delta_projection = nn.Sequential(
@@ -66,17 +70,106 @@ class TemporalDeltaFeatureEncoder(nn.Module):
 
     def pool_motion_features(self, motion_features: torch.Tensor) -> torch.Tensor:
         batch_size, num_tokens, hidden_size = motion_features.shape
-        input_side = math.isqrt(num_tokens)
-        output_side = math.isqrt(self.num_queries)
-        if input_side * input_side == num_tokens and output_side * output_side == self.num_queries:
-            motion_grid = motion_features.transpose(1, 2).reshape(batch_size, hidden_size, input_side, input_side)
-            pooled_grid = F.adaptive_avg_pool2d(motion_grid, (output_side, output_side))
-            return pooled_grid.flatten(2).transpose(1, 2)
+        if self.spatial_pooling:
+            pooled_motion = self._pool_spatial_token_blocks(motion_features)
+            if pooled_motion is not None:
+                return pooled_motion
+            self._warn_spatial_pooling_fallback(num_tokens)
 
         return F.adaptive_avg_pool1d(
             motion_features.transpose(1, 2),
             self.num_queries,
         ).transpose(1, 2)
+
+    def _warn_spatial_pooling_fallback(self, num_tokens: int) -> None:
+        if self._warned_spatial_pooling_fallback:
+            return
+        warnings.warn(
+            "TemporalDeltaFeatureEncoder spatial_pooling=True, but the visual token "
+            f"layout could not be inferred from {num_tokens} tokens; falling back to 1D pooling.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        self._warned_spatial_pooling_fallback = True
+
+    def _pool_spatial_token_blocks(self, motion_features: torch.Tensor) -> Optional[torch.Tensor]:
+        batch_size, num_tokens, hidden_size = motion_features.shape
+        token_block_shape = self._infer_square_token_blocks(num_tokens)
+        if token_block_shape is None:
+            return None
+
+        num_blocks, block_side = token_block_shape
+        if self.num_queries % num_blocks == 0:
+            per_block_tokens = self.num_queries // num_blocks
+            block_out_h, block_out_w = self._factor_pair_closest_to_aspect(
+                per_block_tokens,
+                target_aspect=1.0,
+            )
+            blocks = motion_features.reshape(batch_size, num_blocks, block_side, block_side, hidden_size)
+            blocks = blocks.permute(0, 1, 4, 2, 3).reshape(
+                batch_size * num_blocks,
+                hidden_size,
+                block_side,
+                block_side,
+            )
+            pooled_blocks = F.adaptive_avg_pool2d(blocks, (block_out_h, block_out_w))
+            pooled_blocks = pooled_blocks.reshape(
+                batch_size,
+                num_blocks,
+                hidden_size,
+                block_out_h,
+                block_out_w,
+            )
+            # InternVL dynamic preprocessing stores the front image blocks in
+            # row-major order. SimLingo uses two horizontal blocks, so keeping
+            # the block axis before the per-block width preserves left/right
+            # locality instead of flattening all 512 tokens into a 1D sequence.
+            return pooled_blocks.permute(0, 3, 1, 4, 2).reshape(
+                batch_size,
+                self.num_queries,
+                hidden_size,
+            )
+
+        grid = motion_features.reshape(batch_size, num_blocks, block_side, block_side, hidden_size)
+        grid = grid.permute(0, 4, 2, 1, 3).reshape(
+            batch_size,
+            hidden_size,
+            block_side,
+            num_blocks * block_side,
+        )
+        out_h, out_w = self._factor_pair_closest_to_aspect(
+            self.num_queries,
+            target_aspect=float(num_blocks),
+        )
+        pooled_grid = F.adaptive_avg_pool2d(grid, (out_h, out_w))
+        return pooled_grid.flatten(2).transpose(1, 2)
+
+    @staticmethod
+    def _infer_square_token_blocks(num_tokens: int) -> Optional[Tuple[int, int]]:
+        for block_side in range(math.isqrt(num_tokens), 1, -1):
+            block_tokens = block_side * block_side
+            if num_tokens % block_tokens == 0:
+                return num_tokens // block_tokens, block_side
+        return None
+
+    @staticmethod
+    def _factor_pair_closest_to_aspect(num_cells: int, target_aspect: float) -> Tuple[int, int]:
+        best_h, best_w = 1, num_cells
+        best_score = float("inf")
+        target_aspect = max(target_aspect, 1e-6)
+        for h in range(1, math.isqrt(num_cells) + 1):
+            if num_cells % h != 0:
+                continue
+            for candidate_h, candidate_w in ((h, num_cells // h), (num_cells // h, h)):
+                aspect = candidate_w / candidate_h
+                score = abs(math.log(aspect / target_aspect))
+                if score < best_score - 1e-12 or (
+                    abs(score - best_score) <= 1e-12 and candidate_w > best_w
+                ):
+                    best_score = score
+                    best_h = candidate_h
+                    best_w = candidate_w
+        return best_h, best_w
 
     def forward(
         self,
