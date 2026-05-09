@@ -268,6 +268,10 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
         self.model.eval()
         self.condition_action_on_language = _env_flag("SIMLINGO_CONDITION_ACTION_ON_LANGUAGE", True)
         self.model.condition_action_on_language = self.condition_action_on_language
+        custom_prompt = os.environ.get("SIMLINGO_CUSTOM_PROMPT", "").strip()
+        self.custom_prompt = custom_prompt if custom_prompt else None
+        prompt_diagnostic_label = os.environ.get("SIMLINGO_PROMPT_DIAGNOSTIC_LABEL", "").strip()
+        self.prompt_diagnostic_label = prompt_diagnostic_label if prompt_diagnostic_label else None
         self.image_tensor_dtype = self._get_image_tensor_dtype()
         self.camera_intrinsics_tensor = torch.repeat_interleave(
             get_camera_intrinsics(448, 448, 110).unsqueeze(0),
@@ -282,6 +286,10 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
         print(
             f"Temporal feature buffer enabled (max_frames={self.frame_feature_buffer_maxlen})"
         )
+        if self.custom_prompt is not None:
+            print(f"Custom prompt diagnostic enabled: {self.custom_prompt}")
+        if self.prompt_diagnostic_label is not None:
+            print(f"Prompt diagnostic label: {self.prompt_diagnostic_label}")
         if self.config.eval_route_as == -1:
             self.config.eval_route_as = self.model.route_as
         self.iter = self.config_path.split("epoch=")[-1].split("/")[0]
@@ -790,7 +798,22 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
 
         return result
 
-    def _save_frame_render_sample(self, input_data, speed_value, control):
+    def _language_to_text(self, language):
+        if language is None:
+            return None
+        if isinstance(language, str):
+            return language
+        try:
+            if len(language) == 0:
+                return None
+            language = language[0]
+        except TypeError:
+            pass
+        if isinstance(language, bytes):
+            return language.decode('utf-8', errors='replace')
+        return str(language)
+
+    def _save_frame_render_sample(self, input_data, speed_value, control, generated_commentary=None):
         if self.frame_render_dir is None:
             return
 
@@ -810,6 +833,10 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
             'throttle': float(control.throttle),
             'brake': float(control.brake),
             'condition_action_on_language': bool(getattr(self, 'condition_action_on_language', True)),
+            'prompt': getattr(self, 'prompt', None),
+            'custom_prompt': self.custom_prompt,
+            'prompt_diagnostic_label': self.prompt_diagnostic_label,
+            'generated_commentary': generated_commentary,
         }
         with meta_path.open('w', encoding='utf-8') as f:
             json.dump(meta, f)
@@ -847,6 +874,7 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
         model_input = DrivingInput(**self.DrivingInput)
         with torch.autocast(device_type=self.device.type, dtype=torch.float16, enabled=self.device.type == "cuda"):
             pred_speed_wps, pred_route, language = self.model(model_input)
+        generated_commentary = self._language_to_text(language)
         pred_speed_wps = pred_speed_wps.float() if pred_speed_wps is not None else None
         pred_route = pred_route.float() if pred_route is not None else None
         if self.temporal_signal_diagnostic is not None:
@@ -932,7 +960,13 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
                             draw.text((10, y_start + y_dist*(idx)), line, font=font, fill=(255, 255, 255, 255))
                     y_start = y_start + y_dist*(idx+1)
 
-                answer = language[0] if len(language) > 0 else "<not generated>"
+                if getattr(self, "prompt_diagnostic_label", None):
+                    lines = textwrap.wrap(f"Prompt diagnostic: {self.prompt_diagnostic_label}", width=line_width)
+                    for idx, line in enumerate(lines):
+                            draw.text((10, y_start + y_dist*(idx)), line, font=font, fill=(255, 255, 255, 255))
+                    y_start = y_start + y_dist*(idx+1)
+
+                answer = generated_commentary if generated_commentary is not None else "<not generated>"
                 lines = textwrap.wrap(f"Answer: {answer}", width=line_width)
                 for idx, line in enumerate(lines):
                         draw.text((10, y_start + y_dist*(idx)), line, font=font, fill=(255, 255, 255, 255))
@@ -991,12 +1025,21 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
                     'throttle': float(control.throttle),
                     'brake': float(control.brake),
                     'condition_action_on_language': bool(getattr(self, 'condition_action_on_language', True)),
+                    'prompt': getattr(self, 'prompt', None),
+                    'custom_prompt': self.custom_prompt,
+                    'prompt_diagnostic_label': self.prompt_diagnostic_label,
+                    'generated_commentary': generated_commentary,
                 }
                 with meta_path.open('w', encoding='utf-8') as f:
                     json.dump(meta, f)
                 self._save_additional_view_frames(input_data, frame_index)
         elif self.frame_render_dir is not None:
-            self._save_frame_render_sample(input_data, gt_velocity, control)
+            self._save_frame_render_sample(
+                input_data,
+                gt_velocity,
+                control,
+                generated_commentary=generated_commentary,
+            )
 
         return control
 
