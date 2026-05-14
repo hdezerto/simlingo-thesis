@@ -26,16 +26,28 @@ class LanguageModelConfig:
 
 @dataclass
 class TemporalModelConfig:
+    # Shared temporal-module settings.
     enabled: bool = False
     num_queries: int = 8
-    num_layers: int = 2
-    num_heads: int = 8
     dropout: float = 0.1
     gate_enabled: bool = True
     gate_init: float = -2.0
+
+    # Q-former settings.
+    num_layers: int = 2
+    num_heads: int = 8
+    use_current_delta: bool = False
+    include_past_features: bool = True
+
+    # Delta-feature settings. include_absolute_delta is also reused by
+    # Q-former v5 when use_current_delta=True.
     include_absolute_delta: bool = True
     delta_decay: float = 0.9
     spatial_pooling: bool = True
+
+    # Optional training signals used by temporal experiments.
+    aux_loss_weight: float = 0.0
+    dynamic_sample_weight: float = 1.0
 
     _target_: str = "simlingo_training.models.temporal.qformer.TemporalQFormer"
 
@@ -90,6 +102,8 @@ class DatasetBaseConfig:
     img_shift_augmentation_prob: float = 0.5
     
     use_safety_flag: bool = False
+    use_motion_descriptions: bool = False
+    use_motion_prompt: bool = False
     
     num_route_points: int = 20
 

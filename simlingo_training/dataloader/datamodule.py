@@ -318,12 +318,32 @@ class DataModule(LightningDataModule):
         else:
             waypoints = torch.tensor(np.asarray([data[i].waypoints for i in range(len(data))])).float() # [B, F, 2] 11 future waypoints 0.2s apart
         
+        raw_eval_infos = [data[i].eval_infos for i in range(BS)]
         if self.predict:
             qa_templates = [data[i].qa_templates[0] if data[i].qa_templates is not None else None for i in range(BS) ]
-            eval_infos = [data[i].eval_infos if data[i].eval_infos is not None else None for i in range(BS) ]
+            eval_infos = [eval_info if eval_info is not None else None for eval_info in raw_eval_infos]
         else:
             qa_templates = None
-            eval_infos = None
+            if any(ei is not None and 'actor_motion_labels' in ei for ei in raw_eval_infos):
+                eval_infos = {
+                    'actor_motion_labels': torch.tensor(
+                        np.asarray(
+                            [
+                                ei.get('actor_motion_labels', np.zeros(4, dtype=np.float32))
+                                if ei else np.zeros(4, dtype=np.float32)
+                                for ei in raw_eval_infos
+                            ],
+                            dtype=np.float32,
+                        ),
+                        dtype=torch.float32,
+                    ),
+                    'actor_motion_mask': torch.tensor(
+                        [ei.get('actor_motion_mask', 0.0) if ei else 0.0 for ei in raw_eval_infos],
+                        dtype=torch.float32,
+                    ),
+                }
+            else:
+                eval_infos = None
         
         driving_input=DrivingInput(
                 camera_images=image_ff_pixel,  # [B, T, N, C, H, W] uint8 [0, 255]

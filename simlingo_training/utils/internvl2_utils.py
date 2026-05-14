@@ -128,7 +128,7 @@ def get_custom_chat_template(
     spec.loader.exec_module(conv_module)
 
     temporal_tokens_template = TEMP_CONTEXT_TOKEN * num_temporal_tokens
-    image_tokens_templates = temporal_tokens_template + IMG_START_TOKEN + IMG_CONTEXT_TOKEN * num_image_tokens_total + IMG_END_TOKEN
+    image_tokens_templates = IMG_START_TOKEN + temporal_tokens_template + IMG_CONTEXT_TOKEN * num_image_tokens_total + IMG_END_TOKEN
 
     prompts_conv = []
     prompts_question = []

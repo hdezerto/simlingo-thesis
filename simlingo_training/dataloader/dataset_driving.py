@@ -30,6 +30,45 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
         ):
         super().__init__(dreamer=False, **cfg)
 
+    def _get_actor_motion_labels(self, box_path):
+        """Build compact actor-motion labels from the current-frame boxes.
+
+        Labels:
+        - nearby moving actor
+        - moving actor ahead in the ego lane
+        - moving actor to the side
+        - stopped actor ahead in the ego lane
+        """
+        try:
+            with gzip.open(box_path, 'rt') as f:
+                boxes = ujson.load(f)
+        except (FileNotFoundError, ujson.JSONDecodeError):
+            return None
+
+        labels = np.zeros(4, dtype=np.float32)
+        for box in boxes:
+            if box.get('class') not in ('car', 'walker'):
+                continue
+            pos = box.get('position', [0, 0, 0])
+            dist = np.sqrt(pos[0] ** 2 + pos[1] ** 2)
+            if dist > 25.0 or pos[0] < -5.0:
+                continue
+
+            ahead = pos[0] > 0.0 and abs(pos[1]) < 4.0
+            side = abs(pos[1]) >= 3.0
+            moving = box.get('speed', 0.0) > 0.5
+
+            if moving:
+                labels[0] = 1.0
+                if ahead:
+                    labels[1] = 1.0
+                if side:
+                    labels[2] = 1.0
+            elif ahead:
+                labels[3] = 1.0
+
+        return labels
+
     def __getitem__(self, index):
         """Returns the item at index idx. """
         # Disable threading because the data loader will already split in threads.
@@ -115,6 +154,18 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
 
                     commentary = commentary.replace('..', '.')
                     commentary = commentary.replace('in in', 'in')
+
+                    # Append motion descriptions from bounding-box data so the
+                    # language loss teaches the model to describe vehicle motion
+                    # states (moving / stopped) – addresses Cause 3.
+                    if getattr(self, 'use_motion_descriptions', False):
+                        current_box_path = str(
+                            self.boxes[index][self.hist_len - 1],
+                            encoding='utf-8',
+                        )
+                        motion_ctx = self.get_motion_context(current_box_path)
+                        if motion_ctx:
+                            commentary = commentary.rstrip('.') + '. ' + motion_ctx
         
         qa_exists = False
         if self.use_qa:
@@ -236,17 +287,18 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
         answer = ''
 
         prompt_random = random.random()
+        motion_prompt = 'Consider nearby traffic motion. ' if getattr(self, 'use_motion_prompt', False) else ''
         
         if self.use_commentary and commentary_exists and prompt_random < self.prompt_probabilities['commentary']:
             if random.random() < 0.2: # 20% of the time we give commentary as prompt
                 if random.random() < 0.5:
-                    prompt = f"Current speed: {speed_rounded} m/s. {random.choice(target_options)} {commentary} Predict the waypoints."
+                    prompt = f"Current speed: {speed_rounded} m/s. {random.choice(target_options)} {commentary} {motion_prompt}Predict the waypoints."
                 else:
-                    prompt = f"Current speed: {speed_rounded} m/s. Command: {commentary} Predict the waypoints."
+                    prompt = f"Current speed: {speed_rounded} m/s. Command: {commentary} {motion_prompt}Predict the waypoints."
                 answer = f"Waypoints:"
             else:
                 # 80% of the time we want to predict commentary
-                prompt = f"Current speed: {speed_rounded} m/s. {random.choice(target_options)} What should the ego do next?"
+                prompt = f"Current speed: {speed_rounded} m/s. {random.choice(target_options)} {motion_prompt}What should the ego do next?"
                 answer = f"{commentary} Waypoints:"
             self.num_sampled_per_type['commentary'] += 1
             
@@ -256,7 +308,7 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
             self.num_sampled_per_type['qa'] += 1
             
         else:
-            prompt = f"Current speed: {speed_rounded} m/s. {random.choice(target_options)} Predict the waypoints."
+            prompt = f"Current speed: {speed_rounded} m/s. {random.choice(target_options)} {motion_prompt}Predict the waypoints."
             answer = f"Waypoints:"
             self.num_sampled_per_type['driving'] += 1
 
@@ -303,6 +355,20 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
         
         images = [data['rgb']]
 
+        # Compute motion label for auxiliary temporal loss (Cause 1).
+        motion_eval_infos = None
+        if getattr(self, 'use_motion_descriptions', False):
+            current_box_path = str(
+                self.boxes[index][self.hist_len - 1],
+                encoding='utf-8',
+            )
+            actor_motion_labels = self._get_actor_motion_labels(current_box_path)
+            if actor_motion_labels is not None:
+                motion_eval_infos = {
+                    'actor_motion_labels': actor_motion_labels,
+                    'actor_motion_mask': 1.0,
+                }
+
         data_new = DatasetOutput(
             conversation = conversation_all,
             answer = conversation_answer,
@@ -316,6 +382,7 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
             placeholder_values = placeholder_values,
             measurement_path = data['measurement_path'],
             dataset = 'driving',
+            eval_infos = motion_eval_infos,
         )
         
         if VIZ_DATA:

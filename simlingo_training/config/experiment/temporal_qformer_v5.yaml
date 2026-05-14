@@ -21,18 +21,21 @@ model:
     variant: 'OpenGVLab/InternVL2-1B'
     freeze: true
   temporal_model:
-    _target_: simlingo_training.models.temporal.delta_feature.TemporalDeltaFeatureEncoder
     enabled: true
-    num_queries: 64
+    num_queries: 32
+    num_layers: 2
+    num_heads: 8
     dropout: 0.1
     gate_enabled: false
     gate_init: 0.0
+    use_current_delta: true
+    include_past_features: true
     include_absolute_delta: true
-    delta_decay: 0.9
-    spatial_pooling: true
+    aux_loss_weight: 0.5
+    dynamic_sample_weight: 3.0
 
 data_module:
-  batch_size: 12
+  batch_size: 6
   num_workers: 8
   base_dataset:
     data_path: database/simlingo
@@ -51,13 +54,15 @@ data_module:
     use_old_towns: True
     use_town13: True
     use_safety_flag: True
+    use_motion_descriptions: True
+    use_motion_prompt: True
 
-max_epochs: 14
+max_epochs: 15
 val_every_n_epochs: 2
 
 gpus: 8
 seed: 9876
-name: temporal_delta_feature_v2_nogate
+name: temporal_qformer_v5
 resume: False
 
 hydra:

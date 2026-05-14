@@ -270,6 +270,9 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
         self.model.condition_action_on_language = self.condition_action_on_language
         custom_prompt = os.environ.get("SIMLINGO_CUSTOM_PROMPT", "").strip()
         self.custom_prompt = custom_prompt if custom_prompt else None
+        self.use_motion_prompt = bool(
+            OmegaConf.select(cfg, "data_module.base_dataset.use_motion_prompt", default=False)
+        )
         prompt_diagnostic_label = os.environ.get("SIMLINGO_PROMPT_DIAGNOSTIC_LABEL", "").strip()
         self.prompt_diagnostic_label = prompt_diagnostic_label if prompt_diagnostic_label else None
         self.image_tensor_dtype = self._get_image_tensor_dtype()
@@ -706,10 +709,11 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
         else:
             result['route'] = route_img
 
+        motion_prompt = 'Consider nearby traffic motion. ' if self.use_motion_prompt else ''
         if self.config.use_cot:
-            prompt = f"Current speed: {speed} m/s. {prompt_tp} What should the ego do next?"
+            prompt = f"Current speed: {speed} m/s. {prompt_tp} {motion_prompt}What should the ego do next?"
         else:
-            prompt = f"Current speed: {speed} m/s. {prompt_tp} Predict the waypoints."
+            prompt = f"Current speed: {speed} m/s. {prompt_tp} {motion_prompt}Predict the waypoints."
         
         if self.custom_prompt is not None:
             if self.user_flag == 2 or self.user_flag == 3:

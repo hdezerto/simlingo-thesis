@@ -65,6 +65,9 @@ class TemporalQFormer(nn.Module):
         dropout: float = 0.1,
         gate_enabled: bool = True,
         gate_init: float = -2.0,
+        use_current_delta: bool = False,
+        include_past_features: bool = True,
+        include_absolute_delta: bool = True,
         **_: Optional[object],
     ):
         super().__init__()
@@ -72,6 +75,24 @@ class TemporalQFormer(nn.Module):
         self.num_queries = num_queries
         self.max_history_frames = max(1, max_history_frames)
         self.gate_enabled = gate_enabled
+        self.use_current_delta = use_current_delta
+        self.uses_current_frame = use_current_delta
+        self.include_past_features = include_past_features
+        self.include_absolute_delta = include_absolute_delta
+
+        qformer_input_dim = hidden_size
+        if self.use_current_delta:
+            num_input_parts = 1  # signed current-vs-past feature delta
+            if self.include_past_features:
+                num_input_parts += 1
+            if self.include_absolute_delta:
+                num_input_parts += 1
+            qformer_input_dim = hidden_size * num_input_parts
+        self.input_projection = (
+            nn.Linear(qformer_input_dim, hidden_size)
+            if qformer_input_dim != hidden_size
+            else nn.Identity()
+        )
 
         # Learned summary slots that compress all past frames into a small token set.
         # They are expanded per batch item in forward().
@@ -90,7 +111,11 @@ class TemporalQFormer(nn.Module):
         if self.gate_enabled:
             self.gate = nn.Parameter(torch.tensor(gate_init, dtype=torch.float))
 
-    def forward(self, past_frame_tokens: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        past_frame_tokens: torch.Tensor,
+        current_frame_tokens: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         """
         Args:
             past_frame_tokens: [B, T_past, P, D]
@@ -98,6 +123,7 @@ class TemporalQFormer(nn.Module):
                 T_past: number of past frames (oldest to newest)
                 P: number of visual tokens per frame
                 D: hidden size
+            current_frame_tokens: [B, P, D], required when use_current_delta=True
 
         Returns:
             [B, Q, D] temporal memory tokens, where Q is num_queries
@@ -115,12 +141,27 @@ class TemporalQFormer(nn.Module):
                 f"at most {self.max_history_frames}."
             )
 
+        if self.use_current_delta:
+            if current_frame_tokens is None:
+                raise ValueError("current_frame_tokens is required when use_current_delta=True.")
+            current_tokens = current_frame_tokens.unsqueeze(1)
+            signed_delta = current_tokens - past_frame_tokens
+            memory_parts = [signed_delta]
+            if self.include_past_features:
+                memory_parts.insert(0, past_frame_tokens)
+            if self.include_absolute_delta:
+                memory_parts.append(signed_delta.abs())
+            memory = torch.cat(memory_parts, dim=-1)
+            memory = self.input_projection(memory)
+        else:
+            memory = past_frame_tokens
+
         # Slice the learned temporal positions for the frames that are actually
         # present in this batch item.
         temporal_pos = self.temporal_position_embeddings[:, :num_past_frames]
         # Add temporal identity before flattening so tokens still carry which past
         # frame they came from after the per-frame structure is removed.
-        memory = past_frame_tokens + temporal_pos
+        memory = memory + temporal_pos
         # Merge the per-frame token grids into one long memory sequence:
         # [B, T_past, P, D] -> [B, T_past * P, D]
         memory = memory.reshape(batch_size, -1, self.hidden_size)

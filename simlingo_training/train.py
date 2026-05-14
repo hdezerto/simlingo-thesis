@@ -63,8 +63,9 @@ def main(cfg: TrainConfig):
         if not strict_checkpoint_loading:
             missing_keys = list(load_result.missing_keys)
             unexpected_keys = list(load_result.unexpected_keys)
-            non_temporal_missing = [key for key in missing_keys if not key.startswith("temporal_encoder.")]
-            non_temporal_unexpected = [key for key in unexpected_keys if not key.startswith("temporal_encoder.")]
+            temporal_prefixes = ("temporal_encoder.", "temporal_motion_head.", "temporal_speed_head.")
+            non_temporal_missing = [key for key in missing_keys if not key.startswith(temporal_prefixes)]
+            non_temporal_unexpected = [key for key in unexpected_keys if not key.startswith(temporal_prefixes)]
             if non_temporal_missing or non_temporal_unexpected:
                 raise RuntimeError(
                     "Checkpoint loading failed outside the temporal module. "

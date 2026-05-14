@@ -11,6 +11,7 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 from torch import Tensor, nn
+import torch.nn.functional as F
 from torch.optim import AdamW
 from hydra.utils import get_original_cwd
 
@@ -101,6 +102,7 @@ class DrivingModel(pl.LightningModule):
             # norm_layer=NormZeroOne(min_max=(-32.0, 32.0)),
         )
         self.temporal_encoder = None
+        self.temporal_motion_head = None
         if self.temporal_model.enabled:
             max_history_frames = max(1, self.cfg_data_module.base_dataset.hist_len - 1)
             self.temporal_encoder = hydra.utils.instantiate(
@@ -109,6 +111,17 @@ class DrivingModel(pl.LightningModule):
                 max_history_frames=max_history_frames,
                 _recursive_=False,
             )
+            # Auxiliary head: predict compact actor-motion labels from temporal tokens.
+            # This gives the temporal encoder a direct learning signal for motion.
+            hidden = self.language_model.hidden_size
+            self.temporal_motion_head = nn.Sequential(
+                nn.LayerNorm(hidden),
+                nn.Linear(hidden, 256),
+                nn.GELU(),
+                nn.Linear(256, 4),
+            )
+        self.temporal_loss_weight = float(getattr(self.temporal_model, 'aux_loss_weight', 0.0))
+        self.dynamic_sample_weight = float(getattr(self.temporal_model, 'dynamic_sample_weight', 1.0))
 
         if self.freeze_language_model:
             self.set_module_trainable(self.language_model, False)
@@ -268,6 +281,82 @@ class DrivingModel(pl.LightningModule):
         return self._forward_prepared_adaptor_dict(adaptor_dict)
     
 
+    def _compute_temporal_aux_loss(
+        self, adaptor_dict: Dict, example: DrivingExample,
+    ) -> Optional[Dict]:
+        """Auxiliary loss: predict whether nearby vehicles are moving.
+
+        Uses box-derived multi-label targets:
+        nearby moving actor, moving actor ahead, moving actor to the side,
+        and stopped actor ahead.
+        """
+        temporal_embeds = adaptor_dict.get('temporal_embeds')
+        if self.temporal_loss_weight <= 0.0 or temporal_embeds is None or self.temporal_motion_head is None:
+            return None
+
+        # Pool temporal tokens to a single vector per sample.
+        temporal_pooled = temporal_embeds.mean(dim=1)  # [B, D]
+        logits = self.temporal_motion_head(temporal_pooled)  # [B, 4]
+
+        eval_infos = example.driving_label.eval_infos
+        if eval_infos is None or not isinstance(eval_infos, dict) or 'actor_motion_labels' not in eval_infos:
+            zero_loss = logits.sum(dim=-1) * 0.0
+            return {
+                'temporal_motion_loss': (
+                    zero_loss,
+                    torch.ones_like(zero_loss),
+                ),
+            }
+
+        target = eval_infos['actor_motion_labels'].to(logits.dtype).to(logits.device)
+        mask = eval_infos.get('actor_motion_mask')
+        if mask is None:
+            mask = torch.ones(target.size(0), dtype=logits.dtype, device=logits.device)
+        else:
+            mask = mask.to(logits.dtype).to(logits.device)
+
+        if mask.sum() <= 0:
+            zero_loss = logits.sum(dim=-1) * 0.0
+            return {
+                'temporal_motion_loss': (
+                    zero_loss,
+                    torch.ones_like(zero_loss),
+                ),
+            }
+
+        mask = mask.unsqueeze(-1).expand_as(target)
+
+        loss = F.binary_cross_entropy_with_logits(
+            logits, target, reduction='none',
+        )  # [B, 4]
+        return {
+            'temporal_motion_loss': (
+                loss * mask * self.temporal_loss_weight,
+                mask,
+            ),
+        }
+
+    def _compute_dynamic_sample_weights(
+        self, example: DrivingExample,
+    ) -> Tensor:
+        """Per-sample weight: upweight samples where the ego yields/stops.
+
+        This focuses the extra weight on dynamic interaction cases (ego
+        decelerating to near-zero), not generic braking from speed limits or
+        curves.
+        """
+        waypoints = example.driving_label.waypoints  # [B, N_wp, 2]
+        displacements = torch.norm(
+            waypoints[:, 1:] - waypoints[:, :-1], dim=-1,
+        )  # [B, N_wp-1]
+        # The ego was moving but will stop → likely yielding for another actor.
+        is_moving_now = displacements[:, 0] > 0.2  # ~1 m/s
+        min_future_disp = displacements[:, 1:].min(dim=1).values
+        will_stop = min_future_disp < 0.1  # near-zero future speed
+        is_yield = is_moving_now & will_stop  # moving → stopped
+        weights = torch.where(is_yield, self.dynamic_sample_weight, 1.0)
+        return weights  # [B]
+
     def forward_loss(self, example: DrivingExample, per_sample=False) -> TrainingOutput:
         """
         Forward pass of the model for a driving input, followed by
@@ -285,6 +374,23 @@ class DrivingModel(pl.LightningModule):
 
         adaptor_features, adaptor_logits = self.forward_model(example.driving_input, adaptor_dict, driving_labels=example.driving_label)
         loss_dict = self.adaptors.compute_loss(adaptor_features, adaptor_logits, adaptor_dict, example)
+
+        # --- Cause 1: Auxiliary temporal supervision loss ---
+        temporal_aux = self._compute_temporal_aux_loss(adaptor_dict, example)
+        if temporal_aux is not None:
+            loss_dict.update(temporal_aux)
+
+        # --- Cause 2: Upweight dynamic (braking) samples ---
+        if self.temporal_encoder is not None and self.dynamic_sample_weight != 1.0:
+            sample_weights = self._compute_dynamic_sample_weights(example)  # [B]
+            for key in list(loss_dict.keys()):
+                if key.endswith('loss') and key != 'temporal_motion_loss':
+                    loss_val, loss_cnt = loss_dict[key]
+                    # Broadcast sample_weights to match loss shape.
+                    w = sample_weights
+                    while w.dim() < loss_val.dim():
+                        w = w.unsqueeze(-1)
+                    loss_dict[key] = (loss_val * w, loss_cnt)
 
         loss_dict_only_losses = {k:v for k, v in loss_dict.items() if k.endswith("loss")}
         loss_logs = {k:v for k, v in loss_dict.items() if k.endswith("log")}

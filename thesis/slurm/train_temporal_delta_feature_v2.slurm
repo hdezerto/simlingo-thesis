@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=64
 #SBATCH --mem=900G
 #SBATCH --time=3-00:00:00
-#SBATCH --job-name=simlingo_delta_v2_nogate
+#SBATCH --job-name=simlingo_delta_v2_ckpt
 #SBATCH --output=/proj/berzelius-2023-154/users/%u/logs/training/%j.out
 #SBATCH --error=/proj/berzelius-2023-154/users/%u/logs/training/%j.err
 #SBATCH --mail-type=END,FAIL,TIME_LIMIT_90
@@ -25,8 +25,6 @@ export REPO_DIR="${REPO_DIR:-${BASE_DIR}/simlingo-thesis}"
 source "${REPO_DIR}/thesis/env.sh"
 
 cd "$REPO_DIR"
-
-test -f "$MODEL_CKPT" || { echo "checkpoint missing: $MODEL_CKPT"; exit 1; }
 
 source "${REPO_DIR}/thesis/scripts/stage_simlingo_to_scratch.sh"
 TRAIN_DATA_ROOT="${STAGED_DATA_ROOT}"
@@ -49,23 +47,25 @@ echo "LD_LIBRARY_PATH after unset: ${LD_LIBRARY_PATH:-<unset>}"
 
 test -d "${TRAIN_DATA_ROOT}/data/simlingo" || { echo "dataset path missing: ${TRAIN_DATA_ROOT}/data/simlingo"; exit 1; }
 test -f "${TRAIN_BUCKET_ROOT}/buckets_paths.pkl" || { echo "bucket file missing: ${TRAIN_BUCKET_ROOT}/buckets_paths.pkl"; exit 1; }
+test -f "$MODEL_CKPT" || { echo "checkpoint missing: $MODEL_CKPT"; exit 1; }
 
 echo "JOB ID $SLURM_JOB_ID"
 echo "Running on host $(hostname)"
 echo "Checkpoint: $MODEL_CKPT"
+echo "Loading the SimLingo checkpoint, freezing the vision backbone, and training Delta v2 temporal components plus adaptors/LoRA."
 echo "Training data root: ${TRAIN_DATA_ROOT}"
 echo "Training bucket root: ${TRAIN_BUCKET_ROOT}"
 nvidia-smi
 
 python_args=(
   simlingo_training/train.py
-  experiment=temporal_delta_feature_v2_nogate
+  experiment=temporal_delta_feature_v2
   gpus=8
   data_module.num_workers=8
   "data_module.base_dataset.data_path='${TRAIN_DATA_ROOT}'"
   "data_module.base_dataset.bucket_path='${TRAIN_BUCKET_ROOT}'"
   "checkpoint='${MODEL_CKPT}'"
-  name=temporal_delta_feature_v2_nogate_8gpu
+  name=temporal_delta_feature_v2_8gpu
 )
 
 python "${python_args[@]}"

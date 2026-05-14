@@ -196,6 +196,7 @@ class LingoInternVLModel(nn.Module):
                             ).to(dtype=inputs_embeds.dtype)
                         else:
                             temporal_embeds = temporal_encoder(past_frame_embeds).to(dtype=inputs_embeds.dtype)
+                    adaptor_dict['temporal_embeds'] = temporal_embeds
                     inputs_embeds = self.fill_special_token_embeddings(
                         inputs_embeds,
                         input_ids,
