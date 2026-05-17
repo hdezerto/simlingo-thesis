@@ -284,11 +284,12 @@ class DrivingModel(pl.LightningModule):
     def _compute_temporal_aux_loss(
         self, adaptor_dict: Dict, example: DrivingExample,
     ) -> Optional[Dict]:
-        """Auxiliary loss: predict whether nearby vehicles are moving.
+        """Auxiliary loss: predict interaction-relevant actor motion.
 
         Uses box-derived multi-label targets:
-        nearby moving actor, moving actor ahead, moving actor to the side,
-        and stopped actor ahead.
+        moving front/path actor near the ego path, moving side/cross-traffic
+        actor near the ego path, stopped actor blocking the path, and
+        expert-yield interaction.
         """
         temporal_embeds = adaptor_dict.get('temporal_embeds')
         if self.temporal_loss_weight <= 0.0 or temporal_embeds is None or self.temporal_motion_head is None:
@@ -339,12 +340,24 @@ class DrivingModel(pl.LightningModule):
     def _compute_dynamic_sample_weights(
         self, example: DrivingExample,
     ) -> Tensor:
-        """Per-sample weight: upweight samples where the ego yields/stops.
+        """Per-sample weight: upweight interaction/yield samples.
 
-        This focuses the extra weight on dynamic interaction cases (ego
-        decelerating to near-zero), not generic braking from speed limits or
-        curves.
+        Prefer the box/waypoint-derived interaction mask. If it is not present,
+        fall back to the older waypoint-only yield heuristic.
         """
+        eval_infos = example.driving_label.eval_infos
+        if isinstance(eval_infos, dict) and 'interaction_sample_weight_mask' in eval_infos:
+            interaction_mask = eval_infos['interaction_sample_weight_mask']
+            interaction_mask = interaction_mask.to(
+                dtype=torch.float32,
+                device=example.driving_label.waypoints.device,
+            )
+            return torch.where(
+                interaction_mask > 0.5,
+                torch.full_like(interaction_mask, self.dynamic_sample_weight),
+                torch.ones_like(interaction_mask),
+            )
+
         waypoints = example.driving_label.waypoints  # [B, N_wp, 2]
         displacements = torch.norm(
             waypoints[:, 1:] - waypoints[:, :-1], dim=-1,

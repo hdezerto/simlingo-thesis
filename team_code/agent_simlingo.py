@@ -709,7 +709,7 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
         else:
             result['route'] = route_img
 
-        motion_prompt = 'Consider nearby traffic motion. ' if self.use_motion_prompt else ''
+        motion_prompt = 'Consider nearby traffic motion and whether the ego path is clear. ' if self.use_motion_prompt else ''
         if self.config.use_cot:
             prompt = f"Current speed: {speed} m/s. {prompt_tp} {motion_prompt}What should the ego do next?"
         else:

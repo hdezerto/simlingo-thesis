@@ -30,44 +30,229 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
         ):
         super().__init__(dreamer=False, **cfg)
 
-    def _get_actor_motion_labels(self, box_path):
-        """Build compact actor-motion labels from the current-frame boxes.
+    @staticmethod
+    def _distance_to_future_path(pos_xy, waypoints):
+        if waypoints is None or len(waypoints) == 0:
+            return float("inf")
+        future_path = np.asarray(waypoints, dtype=np.float32)
+        future_path = future_path[: min(len(future_path), 12)]
+        return float(np.linalg.norm(future_path - pos_xy, axis=-1).min())
+
+    @staticmethod
+    def _future_path_turns(waypoints):
+        if waypoints is None or len(waypoints) < 4:
+            return False
+        future_path = np.asarray(waypoints, dtype=np.float32)
+        future_path = future_path[: min(len(future_path), 12)]
+        lateral = future_path[:, 1]
+        lateral_span = float(lateral.max() - lateral.min())
+        final_lateral = float(abs(lateral[-1]))
+        return lateral_span > 2.0 or final_lateral > 2.0
+
+    @staticmethod
+    def _expert_yields_from_waypoints(waypoints):
+        """Approximate whether the expert slows/yields in the near future."""
+        if waypoints is None or len(waypoints) < 4:
+            return False
+
+        displacements = np.linalg.norm(
+            np.asarray(waypoints[1:], dtype=np.float32)
+            - np.asarray(waypoints[:-1], dtype=np.float32),
+            axis=-1,
+        )
+        if len(displacements) < 3:
+            return False
+
+        early_speed = float(np.mean(displacements[: min(3, len(displacements))]))
+        late_speed = float(np.mean(displacements[-min(3, len(displacements)):]))
+        min_future_speed = float(displacements[min(1, len(displacements) - 1):].min())
+
+        will_stop = min_future_speed < 0.12
+        clearly_slows = early_speed > 0.20 and late_speed < 0.65 * early_speed
+        return will_stop or clearly_slows
+
+    @staticmethod
+    def _commentary_explains_rule_or_following_yield(commentary):
+        """Return true when the commentary should not become a dynamic-yield label.
+
+        The temporal interaction label should focus on dynamic actor conflicts,
+        not on ordinary red-light, stop-sign, front-car-following,
+        construction, or explicit go/accelerate commands.
+        """
+        if not commentary:
+            return False
+
+        text = commentary.lower()
+        rule_yield = any(
+            phrase in text
+            for phrase in (
+                'red traffic light',
+                'traffic light is red',
+                'because of a traffic light',
+                'due to a traffic light',
+                'stop sign',
+            )
+        )
+        following_yield = (
+            'stay behind' in text
+            or 'to stay behind' in text
+            or ('follow the' in text and 'to the front' in text)
+            or ('behind the' in text and 'to the front' in text)
+        )
+        construction_context = 'construction' in text
+        explicit_go = any(
+            phrase in text
+            for phrase in (
+                'accelerate',
+                'proceed',
+                'drive through',
+                'go through',
+                'drive with the target speed',
+                'reach the speed limit',
+            )
+        )
+        return rule_yield or following_yield or construction_context or explicit_go
+
+    def _get_actor_motion_labels(self, box_path, waypoints=None, commentary=None):
+        """Build compact interaction labels from current-frame boxes.
 
         Labels:
-        - nearby moving actor
-        - moving actor ahead in the ego lane
-        - moving actor to the side
-        - stopped actor ahead in the ego lane
+        - moving front/path actor close to the ego future path
+        - moving lateral/cross-traffic actor close to the ego future path
+        - stopped actor blocking the ego future path
+        - expert yield/slowdown for a moving actor conflict
         """
         try:
             with gzip.open(box_path, 'rt') as f:
                 boxes = ujson.load(f)
         except (FileNotFoundError, ujson.JSONDecodeError):
-            return None
+            return None, ''
 
         labels = np.zeros(4, dtype=np.float32)
+        closest_path_moving = None
+        closest_side_moving = None
+        closest_path_stopped = None
+
         for box in boxes:
             if box.get('class') not in ('car', 'walker'):
                 continue
             pos = box.get('position', [0, 0, 0])
+            pos_xy = np.asarray(pos[:2], dtype=np.float32)
             dist = np.sqrt(pos[0] ** 2 + pos[1] ** 2)
             if dist > 25.0 or pos[0] < -5.0:
                 continue
 
-            ahead = pos[0] > 0.0 and abs(pos[1]) < 4.0
+            path_distance = self._distance_to_future_path(pos_xy, waypoints)
+            near_path = path_distance < 4.5 or (pos[0] > 0.0 and abs(pos[1]) < 4.0)
             side = abs(pos[1]) >= 3.0
             moving = box.get('speed', 0.0) > 0.5
+            obj_type = 'vehicle' if box.get('class') == 'car' else 'pedestrian'
 
-            if moving:
-                labels[0] = 1.0
-                if ahead:
-                    labels[1] = 1.0
+            if moving and near_path:
+                item = (path_distance, dist, obj_type, pos[0], pos[1])
                 if side:
-                    labels[2] = 1.0
-            elif ahead:
-                labels[3] = 1.0
+                    labels[1] = 1.0
+                    if closest_side_moving is None or item[:2] < closest_side_moving[:2]:
+                        closest_side_moving = item
+                else:
+                    labels[0] = 1.0
+                    if closest_path_moving is None or item[:2] < closest_path_moving[:2]:
+                        closest_path_moving = item
+            elif not moving and near_path:
+                labels[2] = 1.0
+                item = (path_distance, dist, obj_type, pos[0], pos[1])
+                if closest_path_stopped is None or item[:2] < closest_path_stopped[:2]:
+                    closest_path_stopped = item
 
-        return labels
+        expert_yields = self._expert_yields_from_waypoints(waypoints)
+        has_commentary_filter = bool(commentary and commentary.strip())
+        rule_or_following_yield = self._commentary_explains_rule_or_following_yield(commentary)
+        dynamic_side_actor = closest_side_moving is not None
+        dynamic_turn_path_actor = False
+        if closest_path_moving is not None and self._future_path_turns(waypoints):
+            path_distance, dist, _, _, lateral = closest_path_moving
+            # Capture oncoming/turning conflicts where the actor is not
+            # lateral enough to be a "side" actor but lies on the curved ego
+            # path. The lateral offset avoids relabeling ordinary same-lane
+            # following as temporal yield supervision.
+            dynamic_turn_path_actor = (
+                path_distance < 2.5
+                and dist < 25.0
+                and abs(lateral) > 1.0
+            )
+        dynamic_conflict_actor = dynamic_side_actor or dynamic_turn_path_actor
+        if dynamic_conflict_actor and expert_yields and has_commentary_filter and not rule_or_following_yield:
+            labels[3] = 1.0
+
+        parts = []
+        if labels[3] > 0.0:
+            parts.append('A moving actor is close to the ego path, so the ego should yield until the path is clear.')
+        elif closest_side_moving is not None:
+            _, _, obj_type, _, lateral = closest_side_moving
+            side_name = 'left' if lateral < 0 else 'right'
+            parts.append(f'A moving {obj_type} from the {side_name} is close to the ego path.')
+        elif closest_path_moving is not None:
+            _, _, obj_type, _, _ = closest_path_moving
+            parts.append(f'A moving {obj_type} is close to the ego path.')
+        elif closest_path_stopped is not None:
+            _, _, obj_type, _, _ = closest_path_stopped
+            parts.append(f'A stopped {obj_type} is close to the ego path.')
+
+        return labels, ' '.join(parts)
+
+    @staticmethod
+    def _remove_conflicting_junction_claims(commentary, actor_motion_labels):
+        """Remove stale junction-clear/stopped claims contradicted by boxes.
+
+        Some original commentary templates say that other vehicles are stopped
+        or the junction is clear. If current boxes show a moving actor near the
+        ego path, keeping those sentences creates contradictory supervision.
+        """
+        if actor_motion_labels is None:
+            return commentary
+
+        moving_actor_near_path = actor_motion_labels[0] > 0.0 or actor_motion_labels[1] > 0.0
+        if not moving_actor_near_path:
+            return commentary
+
+        stale_junction_claims = (
+            'other vehicles are stopped at the junction',
+            'vehicles are stopped at the junction',
+            'traffic is stopped at the junction',
+            'vehicle at the junction is moving away',
+            'vehicle in the junction is moving away',
+            'vehicles in the junction are moving away',
+            'junction is clear',
+            'clear junction',
+        )
+        proceed_words = (
+            'accelerate',
+            'proceed',
+            'drive through',
+            'go through',
+        )
+        sentences = re.split(r'(?<=[.!?])\s+', commentary.strip())
+        kept = []
+        for sentence in sentences:
+            sentence_lower = sentence.lower()
+            says_to_enter = any(word in sentence_lower for word in proceed_words)
+            has_stale_claim = any(claim in sentence_lower for claim in stale_junction_claims)
+            green_light_junction_go = (
+                says_to_enter
+                and 'traffic light is green' in sentence_lower
+                and 'junction' in sentence_lower
+            )
+            # Drop the whole stale sentence. This is especially important for
+            # templates such as "Accelerate because the traffic light is green
+            # and the junction is clear", where keeping only the green-light
+            # part would still teach the wrong behavior.
+            if has_stale_claim or green_light_junction_go:
+                continue
+            kept.append(sentence)
+
+        if not kept:
+            return 'Follow the route.'
+        return ' '.join(kept)
 
     def __getitem__(self, index):
         """Returns the item at index idx. """
@@ -110,6 +295,18 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
         data['speed'] = current_measurement['speed']
 
         data = self.load_route(data, current_measurement, aug_translation, aug_rotation)
+
+        current_box_path = str(
+            self.boxes[index][self.hist_len - 1],
+            encoding='utf-8',
+        )
+        actor_motion_labels = None
+        actor_motion_context = ''
+        if getattr(self, 'use_motion_descriptions', False):
+            actor_motion_labels, actor_motion_context = self._get_actor_motion_labels(
+                current_box_path,
+                data['waypoints_org'],
+            )
 
         target_point = np.array(current_measurement['target_point'])
         target_point = self.augment_target_point(target_point, y_augmentation=aug_translation, yaw_augmentation=aug_rotation)
@@ -159,11 +356,16 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
                     # language loss teaches the model to describe vehicle motion
                     # states (moving / stopped) – addresses Cause 3.
                     if getattr(self, 'use_motion_descriptions', False):
-                        current_box_path = str(
-                            self.boxes[index][self.hist_len - 1],
-                            encoding='utf-8',
+                        commentary = self._remove_conflicting_junction_claims(
+                            commentary,
+                            actor_motion_labels,
                         )
-                        motion_ctx = self.get_motion_context(current_box_path)
+                        actor_motion_labels, actor_motion_context = self._get_actor_motion_labels(
+                            current_box_path,
+                            data['waypoints_org'],
+                            commentary,
+                        )
+                        motion_ctx = actor_motion_context
                         if motion_ctx:
                             commentary = commentary.rstrip('.') + '. ' + motion_ctx
         
@@ -287,7 +489,7 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
         answer = ''
 
         prompt_random = random.random()
-        motion_prompt = 'Consider nearby traffic motion. ' if getattr(self, 'use_motion_prompt', False) else ''
+        motion_prompt = 'Consider nearby traffic motion and whether the ego path is clear. ' if getattr(self, 'use_motion_prompt', False) else ''
         
         if self.use_commentary and commentary_exists and prompt_random < self.prompt_probabilities['commentary']:
             if random.random() < 0.2: # 20% of the time we give commentary as prompt
@@ -357,17 +559,12 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
 
         # Compute motion label for auxiliary temporal loss (Cause 1).
         motion_eval_infos = None
-        if getattr(self, 'use_motion_descriptions', False):
-            current_box_path = str(
-                self.boxes[index][self.hist_len - 1],
-                encoding='utf-8',
-            )
-            actor_motion_labels = self._get_actor_motion_labels(current_box_path)
-            if actor_motion_labels is not None:
-                motion_eval_infos = {
-                    'actor_motion_labels': actor_motion_labels,
-                    'actor_motion_mask': 1.0,
-                }
+        if getattr(self, 'use_motion_descriptions', False) and actor_motion_labels is not None:
+            motion_eval_infos = {
+                'actor_motion_labels': actor_motion_labels,
+                'actor_motion_mask': 1.0,
+                'interaction_sample_weight_mask': float(actor_motion_labels[3] > 0.0),
+            }
 
         data_new = DatasetOutput(
             conversation = conversation_all,

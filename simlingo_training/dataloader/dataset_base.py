@@ -537,67 +537,6 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
 
         return data
 
-    def get_motion_context(self, box_path):
-        """Generate natural-language descriptions of nearby vehicle motion states.
-
-        Reads the bounding-box file for the current frame and returns a short
-        text describing whether nearby actors are moving or stopped.  This
-        enriches the commentary so that the language loss
-        pushes the LLM to attend to temporal tokens for motion reasoning.
-        """
-        try:
-            with gzip.open(box_path, 'rt') as f:
-                boxes = ujson.load(f)
-        except (FileNotFoundError, ujson.JSONDecodeError):
-            return ''
-
-        moving = []
-        stopped = []
-
-        for box in boxes:
-            cls = box.get('class', '')
-            if cls not in ('car', 'walker'):
-                continue
-
-            pos = box.get('position', [0, 0, 0])
-            dist = np.sqrt(pos[0] ** 2 + pos[1] ** 2)
-
-            # Skip actors that are too far away or behind the ego vehicle.
-            if dist > 25.0 or pos[0] < -5.0:
-                continue
-
-            speed = box.get('speed', 0.0)
-            obj_type = 'vehicle' if cls == 'car' else 'pedestrian'
-
-            # Relative direction in ego frame (x=forward, y=lateral).
-            if pos[0] > 3.0 and abs(pos[1]) < 4.0:
-                direction = 'ahead'
-            elif pos[1] < -3.0:
-                direction = 'to the left'
-            elif pos[1] > 3.0:
-                direction = 'to the right'
-            else:
-                direction = 'nearby'
-
-            if speed > 0.5:
-                moving.append((dist, obj_type, direction))
-            else:
-                stopped.append((dist, obj_type, direction))
-
-        # Prioritise closest actors; limit to avoid overly long text.
-        moving.sort(key=lambda x: x[0])
-        stopped.sort(key=lambda x: x[0])
-
-        parts = []
-        for _, obj_type, direction in moving[:2]:
-            parts.append(f'A {obj_type} {direction} is moving.')
-        for _, obj_type, direction in stopped[:1]:
-            # Only mention stopped actors when nothing is moving.
-            if not moving:
-                parts.append(f'A {obj_type} {direction} is stopped.')
-
-        return ' '.join(parts)
-
     def get_navigational_conditioning(self, data, current_measurement, target_point, next_target_point):
         placeholder_values = {}
         target_options = []

@@ -341,6 +341,10 @@ class DataModule(LightningDataModule):
                         [ei.get('actor_motion_mask', 0.0) if ei else 0.0 for ei in raw_eval_infos],
                         dtype=torch.float32,
                     ),
+                    'interaction_sample_weight_mask': torch.tensor(
+                        [ei.get('interaction_sample_weight_mask', 0.0) if ei else 0.0 for ei in raw_eval_infos],
+                        dtype=torch.float32,
+                    ),
                 }
             else:
                 eval_infos = None
