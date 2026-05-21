@@ -58,22 +58,47 @@ def main(cfg: TrainConfig):
             state_dict = get_fp32_state_dict_from_zero_checkpoint(cfg.checkpoint)
         else:
             state_dict = torch.load(cfg.checkpoint, map_location="cpu")
+
+        lora_key_markers = (
+            "lora_A",
+            "lora_B",
+            "lora_embedding_A",
+            "lora_embedding_B",
+            "lora_magnitude_vector",
+        )
+        reset_lora = getattr(cfg, "reset_llm_lora_from_checkpoint", False)
+        if reset_lora:
+            lora_keys = [
+                key for key in state_dict
+                if any(marker in key for marker in lora_key_markers)
+            ]
+            state_dict = {key: value for key, value in state_dict.items() if key not in lora_keys}
+            print(f"Resetting LLM LoRA: skipped {len(lora_keys)} LoRA checkpoint tensors.")
+
         strict_checkpoint_loading = not cfg.model.temporal_model.enabled
         load_result = model.load_state_dict(state_dict, strict=strict_checkpoint_loading)
         if not strict_checkpoint_loading:
             missing_keys = list(load_result.missing_keys)
             unexpected_keys = list(load_result.unexpected_keys)
             temporal_prefixes = ("temporal_encoder.", "temporal_motion_head.")
-            non_temporal_missing = [key for key in missing_keys if not key.startswith(temporal_prefixes)]
+
+            def expected_missing_key(key):
+                if key.startswith(temporal_prefixes):
+                    return True
+                if reset_lora and any(marker in key for marker in lora_key_markers):
+                    return True
+                return False
+
+            non_temporal_missing = [key for key in missing_keys if not expected_missing_key(key)]
             non_temporal_unexpected = [key for key in unexpected_keys if not key.startswith(temporal_prefixes)]
             if non_temporal_missing or non_temporal_unexpected:
                 raise RuntimeError(
-                    "Checkpoint loading failed outside the temporal module. "
+                    "Checkpoint loading failed outside the expected newly initialised modules. "
                     f"Missing keys: {non_temporal_missing}. "
                     f"Unexpected keys: {non_temporal_unexpected}."
                 )
             if missing_keys:
-                print("Initialising new temporal-module weights from scratch:")
+                print("Initialising expected new weights from scratch:")
                 for key in missing_keys:
                     print(f"  - {key}")
 
@@ -130,7 +155,7 @@ def main(cfg: TrainConfig):
         monitor=None,
         dirpath="./checkpoints",
         filename="{epoch:03d}",
-        save_last=True,
+        save_last=False,
         every_n_epochs=cfg.val_every_n_epochs,
         # every_n_train_steps=cfg.val_check_interval,
     )
@@ -171,6 +196,15 @@ def main(cfg: TrainConfig):
         )
 
     trainer.fit(model, data_module, ckpt_path=resume_path)
+
+    # Keep the periodic epoch checkpoints for recovery/comparison, but also
+    # write an explicit final checkpoint so the last trained state is easy to
+    # identify even when max_epochs is not aligned with every_n_epochs.
+    final_checkpoint_path = os.path.join("checkpoints", "final.ckpt")
+    trainer.save_checkpoint(final_checkpoint_path)
+    if trainer.is_global_zero:
+        print(f"Saved final checkpoint to {final_checkpoint_path}")
+
     wandb.finish()
 
 if __name__ == "__main__":

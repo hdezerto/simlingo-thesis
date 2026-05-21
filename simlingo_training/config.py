@@ -183,6 +183,7 @@ class TrainConfig:
     val_every_n_epochs: int = 1
 
     checkpoint: Optional[str] = None
+    reset_llm_lora_from_checkpoint: bool = False
 
 
 def register_configs():

@@ -213,8 +213,10 @@ sbatch thesis/slurm/<training_launcher>.slurm
 Current temporal launchers:
 
 ```bash
-thesis/slurm/train_temporal_delta_feature_v3.slurm
-thesis/slurm/train_temporal_qformer_v6.slurm
+thesis/slurm/train_temporal_delta_feature_v3.slurm   # completed result version
+thesis/slurm/train_temporal_qformer_v6.slurm         # completed result version
+thesis/slurm/train_temporal_delta_feature_v4.slurm   # next run: scene-fact cleanup + fresh LLM LoRA
+thesis/slurm/train_temporal_qformer_v7.slurm         # next run: scene-fact cleanup + fresh LLM LoRA
 ```
 
 Each launcher:
@@ -372,14 +374,11 @@ ${EVAL_OUT_ROOT}/<agent_name>/bench2drive/<seed>/
 
 ## 10. Temporal Implementation Summary
 
-Temporal input:
+Temporal input and injection:
 
-- Training frames are ordered old-to-new; the last frame is current.
-- Dataset frames are saved every `5` CARLA ticks. With `hist_len=5` and `history_stride=1`, the model uses ticks like `80, 85, 90, 95, 100`.
-- Online CARLA inference still runs every simulator tick. It samples the history from `frame_feature_buffer` at the training spacing, so each current frame is encoded once and reused later.
-- Override history spacing only with `TEMPORAL_INFERENCE_STRIDE=<sim_steps>`.
-
-Temporal injection:
+- Training history is old-to-new; the last frame is current. With `hist_len=5` and `history_stride=1`, frames are spaced by the dataset interval of `5` CARLA ticks.
+- CARLA inference encodes each current frame once, stores it in `frame_feature_buffer`, and samples history at the training spacing. Override only with `TEMPORAL_INFERENCE_STRIDE=<sim_steps>`.
+- Token layout:
 
 ```text
 <img>
@@ -389,138 +388,150 @@ Temporal injection:
 text prompt...
 ```
 
-`<IMG_CONTEXT>` receives current-frame InternVL tokens. `<TEMP_CONTEXT>`
-receives temporal encoder outputs. During training, driving heads condition on
-ground-truth assistant text; during evaluation, the model first generates
-assistant text and then predicts driving from that generated text.
+`<IMG_CONTEXT>` receives current-frame InternVL tokens. `<TEMP_CONTEXT>` receives temporal encoder outputs. Driving heads train with ground-truth assistant text and evaluate from generated assistant text.
 
 Temporal methods:
 
-| Method | Config target | Output |
+| Method | Core idea | Current version |
 | --- | --- | --- |
-| Q-former | `simlingo_training.models.temporal.qformer.TemporalQFormer` | Learned query tokens attend over temporal visual memory |
-| Delta feature | `simlingo_training.models.temporal.delta_feature.TemporalDeltaFeatureEncoder` | Current-vs-past feature deltas are pooled into compact motion tokens |
+| Q-former | Learned query tokens attend over temporal visual memory | v6: 32 queries over `[past, current-past, abs(current-past)]`, 2 layers, 8 heads, `dropout=0.1`, no gate |
+| Delta feature | Encode current-vs-past feature deltas into compact motion tokens | v3: signed + absolute deltas, `delta_decay=0.9`, spatial pooling to 64 tokens, no gate |
 
-Q-former v5 flow:
+Common temporal training setup:
 
-```text
-current tokens: [B, 512, 896]
-past tokens:    [B, 4, 512, 896]
-concat past + (current-past) + abs(current-past) -> [B, 4, 512, 2688]
-input projection + temporal positions           -> [B, 4, 512, 896]
-flatten memory                                  -> [B, 2048, 896]
-32 learned queries attend to memory for 2 layers -> [B, 32, 896]
+- Load SimLingo `epoch=013`; freeze vision backbone and waypoint input encoder; train temporal modules, adaptors, and LLM LoRA.
+- Keep current-frame image tokens; temporal modules add history tokens instead of replacing the image.
+- Put temporal tokens inside `<img>...</img>` and use the mild prompt: `Consider nearby traffic motion and whether the ego path is clear.`
+- Add box-derived motion commentary, an auxiliary temporal motion head, and dynamic sample weighting.
+
+### Temporal Motion Head
+
+Implemented in `simlingo_training/models/driving.py`. It is training-only and gives temporal tokens a direct motion signal:
+
+```python
+temporal_pooled = temporal_embeds.mean(dim=1)      # [B, D]
+logits = temporal_motion_head(temporal_pooled)    # [B, 4]
 ```
 
-Each Q-former layer has separate weights and applies query self-attention,
-query-to-memory cross-attention, and an MLP update. In v5, `dropout=0.1`,
-`num_heads=8`, `num_layers=2`, and the gate is disabled.
-
-Delta feature v2 flow:
+`D` is the LLM hidden size. The head is:
 
 ```text
-current tokens: [B, 512, 896]
-past tokens:    [B, 4, 512, 896]
-concat (current-past) + abs(current-past)        -> [B, 4, 512, 1792]
-decay-weighted average over time, delta_decay=0.9 -> [B, 512, 1792]
-delta projection                                 -> [B, 512, 896]
-spatial pool 2 x 16 x 16 token blocks            -> [B, 64, 896]
-token projection + output norm                   -> [B, 64, 896]
+LayerNorm(D) -> Linear(D, 256) -> GELU -> Linear(256, 4)
 ```
 
-Delta spatial pooling preserves rough image locality. If the token layout
-cannot be inferred, the encoder warns once and falls back to 1D pooling.
+Labels are multi-label:
 
-Common temporal training changes:
+| Label | Meaning |
+| --- | --- |
+| `0` | Moving actor near the ego future path, mostly front/path region |
+| `1` | Moving side/cross actor near the ego future path |
+| `2` | Stopped actor near or blocking the ego future path |
+| `3` | Strict dynamic-yield interaction |
 
-- Recent runs load the SimLingo `epoch=013` checkpoint; vision backbone and waypoint input encoder are frozen, while temporal modules, adaptors, and LLM LoRA remain trainable.
-- Temporal tokens are placed inside `<img>...</img>` to make the LLM treat them as visual evidence.
-- Mild prompt: `Consider nearby traffic motion.`
-- Commentary is enriched with box-derived motion facts.
-- Auxiliary motion head predicts four box-derived labels from temporal tokens: moving front/path actor, moving lateral/cross actor, stopped blocking actor, and strict dynamic-yield interaction.
-- `aux_loss_weight=0.5`; `dynamic_sample_weight=3.0` upweights strict dynamic-yield interaction samples for the main losses.
-- Current-frame image tokens are kept; no image-token dropout in these runs.
+The loss is masked BCE-with-logits, weighted by `aux_loss_weight=0.5`. It does not replace the main language/route/waypoint losses. `dynamic_sample_weight=3.0` is separate and upweights main losses when `actor_motion_labels[3]=1`.
 
-Strict interaction supervision added after v2/v5:
+### Supervision Versions
 
-- Removes stale commentary claims such as "vehicles are stopped at the junction", "junction is clear", and green-light "accelerate/drive through" instructions when boxes and expert waypoints indicate a moving actor conflict.
-- Sets `actor_motion_labels[3]=1` only when a moving actor is close to the ego future path, expert future waypoints slow/yield, commentary is available, and the case is not explained by a red light, stop sign, construction, or front-car following.
-- Adds yield text only for those strict interaction samples: `A moving actor is close to the ego path, so the ego should yield until the path is clear.`
+Current results use the V3/V6 supervision:
+
+- Labels are computed from current boxes and future expert waypoints.
+- Stale junction text is removed only when preliminary labels show a moving actor near the ego path.
+- `actor_motion_labels[3]` can be suppressed by cleaned commentary that looks like red-light stopping, stop-sign stopping, construction, front-car following, or explicit go/accelerate.
+- This explains remaining rendered failures: stale `black car` / `stay behind`, green-light acceleration, and `vehicles are stopped at the junction` text can still leak through.
+
+Current working-tree refactor for the next run:
+
+- Builds one scene-fact object from boxes, current measurements, and future expert waypoints.
+- Computes labels from scene facts only; cleaned commentary no longer decides whether label `3` is true.
+- Removes stale `junction is clear` / `vehicles are stopped` claims, false traffic-light color claims, and green-light go/speed-up instructions contradicted by moving-conflict facts.
+- In strict dynamic-yield samples, removes following/color-distance distractions such as `stay behind` and `black car` even when a real lead vehicle exists, so the language target focuses on the interaction-yield reason.
+- Sets `actor_motion_labels[3]=1` for dynamic-yield cases: a moving side/cross actor, or a moving actor near the curved future turn path, is close to the ego future path; the expert waypoints slow or stop; and no verified red/yellow light, stop sign, construction, or pure lead-vehicle-following reason explains the slowdown.
+
+Current-working-tree commentary changes:
+
+| Case | Example sentence | When changed | Result |
+| --- | --- | --- | --- |
+| Stale stopped-junction claim | `vehicles are stopped at the junction` | Moving actor/path or junction conflict exists | Sentence removed |
+| Stale clear-junction claim | `junction is clear` | Moving actor/path or junction conflict exists | Sentence removed |
+| Stale moving-away claim | `vehicle in the junction is moving away` | Moving actor/path or junction conflict exists | Sentence removed |
+| Green-light go/speed-up instruction | `Accelerate because the traffic light is green`, `Speed up because the traffic light is green` | Moving conflict or expert-yield context exists | Sentence removed |
+| False red-light claim | `Remain stopped due to the red traffic light` | Affecting light is verified green | Sentence removed |
+| False green-light claim | `traffic light is green` | Red/yellow light or light hazard is verified | Sentence removed |
+| Following/color-distance distraction | `stay behind`, `remain behind`, `black car` | Strict dynamic-yield sample, or no verified lead vehicle | Sentence removed |
+| Valid rule stop | `Remain stopped due to the red traffic light` | Red/yellow light is verified | Sentence kept; label `3=0` |
+| Valid lead following | `stay behind the vehicle in front` | Lead vehicle is verified and no strict dynamic-yield label is set | Sentence kept; label `3=0` |
+
+If all sentences are removed, the cleaned commentary becomes `Follow the route.`.
+Then one motion sentence can be appended: strict dynamic-yield text, moving
+left/right actor text, moving actor near-path text, or stopped actor near-path
+text.
+
+Examples:
+
+- `Turn left. Accelerate because the traffic light is green and the other vehicles are stopped at the junction and the junction is clear.` -> `Turn left. A moving actor is close to the ego path, so the ego should yield until the path is clear.`
+- `Follow the route. Decelerate to stay behind the black car that is to the front left in 29.2 meters.` -> `Follow the route. A moving actor is close to the ego path, so the ego should yield until the path is clear.` for strict dynamic-yield samples.
+- `Turn left. Remain stopped due to the red traffic light in 1.8 meters.` -> `Turn left.` when the affecting light is verified green.
 
 Inference fixes:
 
-- `team_code/agent_simlingo.py` calls `self.model.eval()` after loading checkpoints, so dropout is disabled during rendering/evaluation.
+- `team_code/agent_simlingo.py` sets `self.model.eval()` after loading checkpoints.
 - Language generation uses greedy decoding with `temperature=0.0`.
-- Closed-loop CARLA can still vary due to actor spawning and simulator state. Treat old renders before the `eval()` fix, or with actor-spawn warnings, as weak evidence.
+- CARLA can still vary due to actor spawning and simulator state, so renders with spawn warnings are weak evidence.
 
-## 11. Experiment Evidence
-
-| Experiment | Main Evidence | Interpretation |
-| --- | --- | --- |
-| v1 Q-former | `hist_len=3`, `queries=8`, `epochs=5`; wiring test completed | Too small/short to fix motion failures |
-| v2 Q-former | `hist_len=5`, `queries=16`; final gate sigmoid about `0.167`; selected final renders still collided on `3936`, `4183`, `4468`, `4683` | Temporal influence likely too weak |
-| v3 Q-former gate 0 | Full `epoch=011` eval: driving score `86.09 +/- 0.70`, success `67.42% +/- 0.77%`; route `4683` diagnostic not robust | Stronger initial gate helped some cases, not consistently |
-| v4 Q-former no gate | `epoch=011` selected renders still collided on all five routes: scores `60, 60, 60, 42, 42` | No gate + trainable adaptors did not fix motion failures |
-| Delta feature v1 | Trained through `epoch=013`; selected renders not clearly better; still produced problematic stopped-vehicle commentary on `4683` | Useful ablation, not a clear fix |
-| Delta feature v2 | Completed `epoch=013`; no gate, spatial pooling, motion prompt/descriptions, aux motion loss, dynamic weighting. Final selected renders: route `3936` scored `100`, but `11755`, `4183`, `4468`, and `4683` still scored `60` with vehicle collisions | Useful intermediate run, but trained before strict interaction-commentary cleanup; one selected-route success is not robust |
-| Q-former v5 | Completed `epoch=013`; 32 queries over `[past, current-past, abs(current-past)]`, same supervision changes as delta v2. Final selected renders still collided on all five routes; route `4183` scored `36` with two vehicle collisions | Explicit deltas helped make the architecture more logical, but did not fix failures before strict cleanup |
-| Delta feature v3 | Running as `simlingo_delta_v3_ckpt`; same delta v2 architecture, now with strict interaction-yield commentary cleanup and strict interaction sample weighting | Best current delta run |
-| Q-former v6 | Running as `simlingo_qformer_v6_ckpt`; same Q-former v5 architecture, now with strict interaction-yield commentary cleanup and strict interaction sample weighting | Best current Q-former run |
-
-Selected-render results at final v2/v5 checkpoints:
-
-| Route | Scenario | Delta v2 `epoch=013` | Q-former v5 `epoch=013` |
-| --- | --- | --- | --- |
-| `11755` | `EnterActorFlow_1` | score `60`, `1` vehicle collision | score `60`, `1` vehicle collision |
-| `3936` | `SignalizedJunctionLeftTurn_1` | score `100`, no collision | score `60`, `1` vehicle collision |
-| `4183` | `SignalizedJunctionLeftTurn_1` | score `60`, `1` vehicle collision | score `36`, `2` vehicle collisions |
-| `4468` | `SignalizedJunctionLeftTurn_1` | score `60`, `1` vehicle collision | score `60`, `1` vehicle collision |
-| `4683` | `SignalizedJunctionLeftTurn_1` | score `60`, `1` vehicle collision | score `60`, `1` vehicle collision |
-
-Interpretation:
-
-- Delta v2 is more promising than Q-former v5 on the selected routes, but only route `3936` clearly improved.
-- Q-former v5 did not fix the selected dynamic-interaction failures; `4183` was worse with two collisions.
-- Saved commentary still shows stale green-light/junction reasoning. Example pattern: "Accelerate to drive through the junction because the other vehicles are stopped ... and the junction is clear" while the same answer also mentions a moving actor.
-- The old OOD phrase "ignore instruction as it leads to a crash" did not appear in these final selected renders.
-- These results support using v2/v5 as pre-strict-cleanup evidence and waiting for v3/v6 before making further architectural changes.
-
-## 12. Diagnostic Tests And Results
+## 11. Diagnostic Tests And Results
 
 These are controlled renders/audits, not full benchmark results.
 
 | Question | Result | Interpretation |
 | --- | --- | --- |
-| Does temporal signal exist? | At route `4683`, frame `185`: Q-former v3 real-vs-repeat L2 `2.00`, cosine `0.986`; Delta v1 L2 `19.81`, cosine `-0.283` | Input changes exist; delta tokens are much more motion-sensitive than Q-former v3 tokens |
-| Does temporal history change rollout? | v3 route `4683`: real score `42`, repeat-current `36`, zero `60` | Temporal tokens affect rollout, but real history was not reliably better |
-| Is generated commentary conditioning the bottleneck? | No-CoT action on selected v3 routes did not improve failures; route `4683` got worse | Keep normal commentary-conditioned driving; no-CoT is diagnostic only |
-| Can prompting alone fix it? | Strong motion prompt on v4 did not improve selected renders and produced OOD text such as "ignore instruction as it leads to a crash" | Prompt-only changes are risky unless trained with matching wording |
-| Are data/supervision sane? | Temporal dataloader audit: `40` driving + `40` dreamer samples, `0` failures. Supervision audit: `300` samples, moving actors in `254/300`, same-lane moving actors in `155/300`, same-lane stopped actors in `49/300`, `18/300` heuristic flags | Data pipeline is not the main problem; labels have some ambiguity but no broad corruption |
-| Does strict interaction cleanup select the right cases? | `interaction_supervision_audit_strict_v4`: `96` samples, all with `actor_motion_labels[3]=1`; all final commentaries contain yield; no final stale `accelerate`, `drive through`, `junction is clear`, `other vehicles are stopped`, or `moving away` phrases; `13` conflicting claims removed | Strict cleanup now targets the observed failure mode much better |
+| Does temporal signal exist? | Route `4683`, frame `185`: Q-former v3 real-vs-repeat L2 `2.00`, cosine `0.986`; Delta v1 L2 `19.81`, cosine `-0.283` | Delta tokens were much more motion-sensitive than Q-former v3 tokens |
+| Does temporal history change rollout? | v3 route `4683`: real score `42`, repeat-current `36`, zero `60` | Temporal history affects rollout, but real history was not reliably better |
+| Is generated commentary the main bottleneck? | No-CoT action did not improve selected v3 failures; route `4683` got worse | Keep normal commentary-conditioned driving; no-CoT is diagnostic only |
+| Can prompting alone fix it? | Strong motion prompt on v4 did not improve selected renders and produced OOD text | Prompt-only changes are risky unless trained with matching wording |
+| Is the data pipeline sane? | Temporal dataloader audit: `40` driving + `40` dreamer samples, `0` failures | Dataloader wiring is not the main problem |
+| Does scene-fact interaction cleanup select useful cases? | `interaction_supervision_audit_scene_facts_v2`: `150` yield samples, all with interaction text; `92` conflicting claims removed; final targets contain no tracked stale `junction is clear`, `vehicles are stopped`, `black car`, `stay behind`, green-light, or accelerate/speed-up phrases | Current supervision is clean enough to launch the next training versions |
 
-Delta diagnostic heatmaps:
+## 12. Experiment Evidence
 
-- `weighted_signed_delta_norm`: decay-weighted signed motion trail.
-- `weighted_abs_delta_norm`: decay-weighted absolute motion magnitude.
-- `latest_delta_norm`: current-vs-closest-past feature-delta magnitude.
-- `projected_motion_norm`: learned motion features after `delta_projection + motion_norm`, before spatial pooling.
+| Experiment | Main evidence | Interpretation |
+| --- | --- | --- |
+| v1 Q-former | `hist_len=3`, `queries=8`, `epochs=5`; wiring test completed | Too small/short to fix motion failures |
+| v2 Q-former | `hist_len=5`, `queries=16`; final gate sigmoid about `0.167`; selected renders still collided on `3936`, `4183`, `4468`, `4683` | Temporal influence likely too weak |
+| v3 Q-former gate 0 | Full `epoch=011` eval: driving score `86.09 +/- 0.70`, success `67.42% +/- 0.77%`; route `4683` diagnostic not robust | Stronger gate helped some cases, not consistently |
+| v4 Q-former no gate | `epoch=011` selected renders still collided on all five routes | No gate + trainable adaptors did not fix failures |
+| Delta feature v1 | Trained through `epoch=013`; selected renders not clearly better; stale stopped-vehicle commentary on `4683` | Useful ablation, not a clear fix |
+| Delta feature v2 | Completed `epoch=013`; route `3936` scored `100`, but `11755`, `4183`, `4468`, `4683` still collided | Useful intermediate run before strict cleanup |
+| Q-former v5 | Completed `epoch=013`; explicit delta-aware memory; selected renders still collided on all five routes | More logical architecture, but supervision still weak |
+| Delta feature v3 | Completed `epoch=013`; strict interaction cleanup. `epoch=009` improved `3936`, but `epoch=013` regressed | Strict cleanup did not make delta robust; longer training hurt selected behavior |
+| Q-former v6 | Completed `epoch=013`; strict interaction cleanup. Final selected renders fixed `3936` and `4683`; `11755`, `4183`, `4468` still collided | Best temporal result so far, but still fragile |
+| Delta feature v4 planned | Same architecture/training setup as Delta v3, but with scene-fact supervision cleanup v2 and fresh LLM LoRA loaded from the SimLingo checkpoint | Tests whether removing stale language priors fixes delta failures |
+| Q-former v7 planned | Same architecture/training setup as Q-former v6, but with scene-fact supervision cleanup v2 and fresh LLM LoRA loaded from the SimLingo checkpoint | Most promising next run because Q-former v6 already fixed some selected failures |
 
-Main diagnosis:
+Selected-route render results:
 
-- Q-former v3 compressed real history close to repeated-current history.
-- Delta v1 produced motion-sensitive temporal tokens, but the LLM/action heads did not reliably use them.
-- The remaining bottleneck is likely temporal injection/use by the LLM/action heads, plus weak or indirect loss pressure for motion-critical yielding.
+| Route | Scenario | Delta v2 `e13` | Q-former v5 `e13` | Delta v3 `e09` | Delta v3 `e13` | Q-former v6 `e09` | Q-former v6 `e13` |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `11755` | `EnterActorFlow_1` | `60`, collision | `60`, collision | `60`, collision | `60`, collision | `60`, collision | `60`, collision |
+| `3936` | `SignalizedJunctionLeftTurn_1` | `100`, no collision | `60`, collision | `100`, no collision | `60`, collision | `100`, no collision | `100`, no collision |
+| `4183` | `SignalizedJunctionLeftTurn_1` | `60`, collision | `36`, two collisions | `60`, collision | `60`, collision | `60`, collision | `60`, collision |
+| `4468` | `SignalizedJunctionLeftTurn_1` | `60`, collision | `60`, collision | `60`, collision | `60`, collision | `42`, collision + timeout | `60`, collision |
+| `4683` | `SignalizedJunctionLeftTurn_1` | `60`, collision | `60`, collision | `60`, collision | `42`, collision + timeout | `42`, collision + timeout | `100`, no collision |
+
+Interpretation:
+
+- Q-former v6 `epoch=013` is the strongest current selected-route result: it keeps `3936` successful and fixes `4683` on the selected render set.
+- Results are not robust enough to claim the problem is solved. Remaining renders still show false traffic-light claims, unsupported `black car` / `stay behind`, and stale `vehicles are stopped` / `junction is clear` commentary.
+- `11755` may require side information that a front-camera-only model does not have, but the commentary should still avoid confidently claiming the path is clear.
 
 ## 13. Next Actions
 
-Current priority: keep code stable while v3/v6 train and write thesis sections
-that do not depend on final results. Final v2/v5 selected renders have now been
-checked and should be treated as pre-strict-cleanup evidence.
+Current priority: launch the supervision-focused next runs, while preserving Q-former v6 `epoch=013` as the strongest completed result so far.
 
-1. Let `temporal_delta_feature_v3` and `temporal_qformer_v6` train with strict interaction supervision.
-2. When v3/v6 reach a useful checkpoint, render the same five selected failure routes before deciding on full evaluation.
-3. If v3/v6 still fail, the next intervention should be loss/sampling or stronger interaction supervision, not simply more Q-former queries.
-4. Do not remove current-frame tokens by default; use token dropout or ablations only if there is time.
+1. Train Delta feature v4 and Q-former v7 if GPU resources allow.
+2. Both load the SimLingo `epoch=013` checkpoint, freeze the vision backbone and waypoint input encoder, reset LLM LoRA from scratch, and keep the v3/v6 temporal architectures unchanged.
+3. The only intended changes relative to v3/v6 are scene-fact supervision cleanup v2 and fresh LLM LoRA.
+4. Render selected routes at `epoch=009` and the final checkpoint, then compare against Delta v3 and Q-former v6.
+5. If v4/v7 still produce stale commentary, the next hypothesis is that stale behavior lives outside LoRA or that front-camera-only observations are insufficient for some actor-flow cases.
 
 Check jobs and GPU hours:
 
@@ -528,3 +539,10 @@ Check jobs and GPU hours:
 squeue -u "${USER}"
 projinfo -m "${SLURM_ACCOUNT}"
 ```
+
+
+
+
+To do in the future:
+- Ablation for the temporal module
+- Try multi-view

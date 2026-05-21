@@ -235,26 +235,30 @@ def audit(args: argparse.Namespace):
                 counts["skipped_missing_commentary"] += 1
                 continue
 
-            preliminary_labels, _ = helper._get_actor_motion_labels(
+            if not isinstance(boxes, list):
+                counts["skipped_missing_boxes"] += 1
+                continue
+
+            scene_facts = helper._build_interaction_scene_facts(
+                boxes,
+                waypoints,
+                measurements[0],
+            )
+            labels, interaction_text = helper._get_actor_motion_labels(
                 box_path(route_dir, frame_idx),
                 waypoints,
+                current_measurement=measurements[0],
+                scene_facts=scene_facts,
             )
-            if preliminary_labels is None:
+            if labels is None:
                 counts["skipped_missing_boxes"] += 1
                 continue
 
             cleaned_commentary = helper._remove_conflicting_junction_claims(
                 original_commentary,
-                preliminary_labels,
+                labels,
+                scene_facts,
             )
-            labels, interaction_text = helper._get_actor_motion_labels(
-                box_path(route_dir, frame_idx),
-                waypoints,
-                cleaned_commentary,
-            )
-            if labels is None:
-                counts["skipped_missing_boxes"] += 1
-                continue
             if not should_keep(labels, args):
                 counts["skipped_sample_mode"] += 1
                 continue
@@ -282,6 +286,19 @@ def audit(args: argparse.Namespace):
                 "removed_conflicting_claim": removed_text,
                 "future_motion": future_motion_stats(waypoints),
                 "future_path_turns": Data_Driving._future_path_turns(waypoints),
+                "scene_facts": {
+                    "dynamic_conflict_actor": bool(scene_facts.get("dynamic_conflict_actor")),
+                    "ego_near_junction": bool(scene_facts.get("ego_near_junction")),
+                    "expert_yields": bool(scene_facts.get("expert_yields")),
+                    "moving_actor_near_path": bool(scene_facts.get("moving_actor_near_path")),
+                    "moving_junction_actor": bool(scene_facts.get("moving_junction_actor")),
+                    "verified_green_light": bool(scene_facts.get("verified_green_light")),
+                    "verified_traffic_stop": bool(scene_facts.get("verified_traffic_stop")),
+                    "verified_stop_sign": bool(scene_facts.get("verified_stop_sign")),
+                    "verified_construction": bool(scene_facts.get("verified_construction")),
+                    "verified_lead_following": bool(scene_facts.get("verified_lead_following")),
+                    "verified_black_lead_following": bool(scene_facts.get("verified_black_lead_following")),
+                },
                 "actors": actor_details(boxes, waypoints),
             }
 
