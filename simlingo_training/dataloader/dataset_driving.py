@@ -58,8 +58,12 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
         return lateral_span > 2.0 or final_lateral > 2.0
 
     @staticmethod
-    def _expert_yields_from_waypoints(waypoints):
-        """Approximate whether the expert slows/yields in the near future."""
+    def _expert_slows_or_waits_from_waypoints(waypoints):
+        """Approximate whether the expert intentionally waits/slows.
+
+        The strict interaction label uses this as a slow/wait proxy, so avoid
+        treating "already stopped, then accelerates" as interaction yielding.
+        """
         if waypoints is None or len(waypoints) < 4:
             return False
 
@@ -75,9 +79,12 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
         late_speed = float(np.mean(displacements[-min(3, len(displacements)):]))
         min_future_speed = float(displacements[min(1, len(displacements) - 1):].min())
 
-        will_stop = min_future_speed < 0.12
-        clearly_slows = early_speed > 0.20 and late_speed < 0.65 * early_speed
-        return will_stop or clearly_slows
+        starts_moving = early_speed > 0.25
+        starts_stopped = early_speed < 0.10
+        moving_then_stops = starts_moving and min_future_speed < 0.12
+        moving_then_slows = starts_moving and late_speed < 0.55 * early_speed and late_speed < 0.80
+        stopped_and_waits = starts_stopped and late_speed < 0.20
+        return moving_then_stops or moving_then_slows or stopped_and_waits
 
     @staticmethod
     def _normalise_light_state(state):
@@ -118,13 +125,105 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
         return current is None or candidate[:2] < current[:2]
 
     @staticmethod
+    def _has_valid_id(value):
+        if value in (None, -1):
+            return False
+        try:
+            return int(value) >= 0
+        except (TypeError, ValueError):
+            return False
+
+    @staticmethod
     def _ids_match(left, right):
-        if left in (None, -1) or right in (None, -1):
+        if not Data_Driving._has_valid_id(left) or not Data_Driving._has_valid_id(right):
             return False
         try:
             return int(left) == int(right)
         except (TypeError, ValueError):
             return False
+
+    @staticmethod
+    def _box_id(box):
+        try:
+            return int(box.get('id'))
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _actor_visible_for_supervision(box):
+        """Approximate the original front-camera visibility filter."""
+        pos = box.get('position', [0, 0, 0])
+        if len(pos) < 2 or pos[0] <= -1.5:
+            return False
+        num_points = Data_Driving._safe_float(box.get('num_points'))
+        return num_points is None or num_points > 3.0
+
+    @staticmethod
+    def _actor_points_towards_junction(ego_box, actor_box):
+        """Mirror the original commentary/VQA junction-direction heuristic."""
+        if ego_box is None:
+            return False
+        pos = actor_box.get('position', [0, 0, 0])
+        yaw = Data_Driving._safe_float(actor_box.get('yaw'))
+        if len(pos) < 2 or yaw is None:
+            return False
+
+        ego_junction = ego_box.get('junction_id', -1)
+        actor_junction = actor_box.get('junction_id', -1)
+        if ego_junction == -1 or actor_junction == -1:
+            orientation = yaw * 180.0 / np.pi
+            lateral = pos[1]
+            if lateral < -8 and 45 < orientation < 135:
+                return True
+            if lateral > 8 and -135 < orientation < -45:
+                return True
+            if -8 < lateral < 8 and (orientation > 135 or orientation < -135):
+                return True
+            return False
+
+        return (
+            actor_box.get('next_junction_id') == ego_box.get('next_junction_id')
+            or actor_box.get('next_junction_id') == ego_junction
+        )
+
+    def _expert_slows_or_waits_from_metadata(self, current_measurement=None, future_measurements=None):
+        """Use planner target-speed/brake metadata as an additional slow/wait proxy."""
+        if current_measurement is None:
+            return False
+
+        current_speed = self._safe_float(current_measurement.get('speed'), 0.0)
+        target_speed = self._safe_float(current_measurement.get('target_speed'))
+        control_brake = self._truthy(current_measurement.get('control_brake'))
+        brake_value = self._safe_float(current_measurement.get('brake'), 0.0)
+        if brake_value is not None:
+            control_brake = control_brake or brake_value > 0.2
+
+        future_targets = []
+        if future_measurements:
+            for measurement in future_measurements[:5]:
+                value = self._safe_float(measurement.get('target_speed'))
+                if value is not None:
+                    future_targets.append(value)
+        if not future_targets and target_speed is not None:
+            future_targets.append(target_speed)
+
+        avg_future_target = float(np.mean(future_targets)) if future_targets else None
+        current_target_slow = (
+            target_speed is not None
+            and current_speed > 0.5
+            and target_speed < max(0.3, 0.75 * current_speed)
+        )
+        future_target_slow = (
+            avg_future_target is not None
+            and current_speed > 0.5
+            and avg_future_target < max(0.3, 0.75 * current_speed)
+        )
+        stopped_and_target_waits = (
+            current_speed < 0.2
+            and avg_future_target is not None
+            and avg_future_target < 0.3
+        )
+        return bool(control_brake or current_target_slow or future_target_slow or stopped_and_target_waits)
 
     def _traffic_light_state_from_scene(self, boxes, current_measurement=None):
         candidates = []
@@ -212,17 +311,29 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
             return abs(lane_relative) < 0.5
         return abs(pos[1]) < 2.5 or path_distance < 3.0
 
-    def _build_interaction_scene_facts(self, boxes, waypoints=None, current_measurement=None):
+    def _build_interaction_scene_facts(self, boxes, waypoints=None, current_measurement=None, future_measurements=None):
         """Compute scene facts once, then derive labels and text from them."""
         labels = np.zeros(4, dtype=np.float32)
         closest_path_moving = None
         closest_side_moving = None
         closest_path_stopped = None
         closest_lead_vehicle = None
+        metadata_dynamic_hazard = None
         moving_junction_actor = False
+        visible_actor_count = 0
+        vehicle_hazard_actor = False
+        walker_hazard_actor = False
+
+        ego_info_box = None
+        for box in boxes:
+            if box.get('class') == 'ego_info':
+                ego_info_box = box
+                break
 
         future_path_turns = self._future_path_turns(waypoints)
-        expert_yields = self._expert_yields_from_waypoints(waypoints)
+        expert_slows_or_waits_from_waypoints = self._expert_slows_or_waits_from_waypoints(waypoints)
+        expert_slows_or_waits_from_metadata = self._expert_slows_or_waits_from_metadata(current_measurement, future_measurements)
+        expert_slows_or_waits = expert_slows_or_waits_from_waypoints or expert_slows_or_waits_from_metadata
         ego_near_junction = self._ego_near_junction(boxes, current_measurement, waypoints)
         affecting_light_state = self._traffic_light_state_from_scene(boxes, current_measurement)
         light_hazard = bool(
@@ -239,10 +350,17 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
         verified_construction = 'trafficwarning' in speed_reduced_type or 'construction' in speed_reduced_type
         speed_reduced_by_obj_id = current_measurement.get('speed_reduced_by_obj_id') if current_measurement else None
         vehicle_affecting_id = current_measurement.get('vehicle_affecting_id') if current_measurement else None
+        walker_close_id = current_measurement.get('walker_close_id') if current_measurement else None
+        vehicle_hazard = bool(current_measurement and self._truthy(current_measurement.get('vehicle_hazard')))
+        walker_hazard = bool(current_measurement and self._truthy(current_measurement.get('walker_hazard')))
 
         for box in boxes:
             if not self._is_relevant_actor(box):
                 continue
+            if not self._actor_visible_for_supervision(box):
+                continue
+            visible_actor_count += 1
+
             pos = box.get('position', [0, 0, 0])
             if len(pos) < 2:
                 continue
@@ -250,7 +368,7 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
             dist = self._safe_float(box.get('distance'))
             if dist is None:
                 dist = float(np.sqrt(pos[0] ** 2 + pos[1] ** 2))
-            if dist > 35.0 or pos[0] < -8.0:
+            if dist > 35.0:
                 continue
 
             path_distance = self._distance_to_future_path(pos_xy, waypoints)
@@ -260,17 +378,60 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
             obj_type = 'vehicle' if box.get('class') == 'car' else 'pedestrian'
             item = (path_distance, dist, obj_type, pos[0], pos[1], box)
 
-            if moving and (near_path or (ego_near_junction and self._box_in_or_near_junction(box))):
+            actor_id = self._box_id(box)
+            points_towards_junction = self._actor_points_towards_junction(ego_info_box, box)
+            same_road = box.get('same_road_as_ego')
+            same_direction = box.get('same_direction_as_ego')
+            cross_road_context = (
+                ego_near_junction
+                and (
+                    self._box_in_or_near_junction(box)
+                    or points_towards_junction
+                    or (same_road is not None and not self._truthy(same_road))
+                    or (same_direction is not None and not self._truthy(same_direction))
+                )
+            )
+            vehicle_cuts_in = self._truthy(box.get('vehicle_cuts_in'))
+
+            is_vehicle_hazard_actor = (
+                box.get('class') == 'car'
+                and vehicle_hazard
+                and (
+                    self._ids_match(actor_id, vehicle_affecting_id)
+                    or ('vehicle' in speed_reduced_type and self._ids_match(actor_id, speed_reduced_by_obj_id))
+                )
+            )
+            is_walker_hazard_actor = (
+                box.get('class') == 'walker'
+                and walker_hazard
+                and (
+                    self._ids_match(actor_id, walker_close_id)
+                    or self._ids_match(actor_id, speed_reduced_by_obj_id)
+                    or dist < 15.0
+                )
+            )
+            vehicle_hazard_actor = vehicle_hazard_actor or is_vehicle_hazard_actor
+            walker_hazard_actor = walker_hazard_actor or is_walker_hazard_actor
+            dynamic_hazard_conflict = (
+                moving
+                and (is_vehicle_hazard_actor or is_walker_hazard_actor)
+                and (near_path or cross_road_context or vehicle_cuts_in)
+            )
+            if dynamic_hazard_conflict and self._item_is_closer(item, metadata_dynamic_hazard):
+                metadata_dynamic_hazard = item
+
+            if moving and (near_path or dynamic_hazard_conflict or cross_road_context):
                 moving_junction_actor = True
 
             if dist > 25.0 or pos[0] < -5.0:
-                continue
+                if not dynamic_hazard_conflict:
+                    continue
 
             if self._is_same_lane_lead_vehicle(box, path_distance):
                 lead_item = (dist, path_distance, obj_type, pos[0], pos[1], box)
                 if self._item_is_closer(lead_item, closest_lead_vehicle):
                     closest_lead_vehicle = lead_item
-            if moving and near_path:
+            if moving and (near_path or dynamic_hazard_conflict):
                 if side:
                     labels[1] = 1.0
                     if self._item_is_closer(item, closest_side_moving):
@@ -285,6 +446,12 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
                     closest_path_stopped = item
 
         dynamic_side_actor = closest_side_moving is not None
+        strict_side_actor = False
+        very_close_side_actor = False
+        if closest_side_moving is not None:
+            path_distance, dist, _, forward, _, _ = closest_side_moving
+            strict_side_actor = path_distance < 3.25 and dist < 22.0 and forward > -1.0
+            very_close_side_actor = path_distance < 2.50 and dist < 15.0 and forward > -1.0
         dynamic_turn_path_actor = False
         if closest_path_moving is not None and future_path_turns:
             path_distance, dist, _, _, lateral, _ = closest_path_moving
@@ -293,13 +460,15 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
                 and dist < 25.0
                 and abs(lateral) > 1.0
             )
-        dynamic_conflict_actor = dynamic_side_actor or dynamic_turn_path_actor
+        metadata_dynamic_conflict_actor = metadata_dynamic_hazard is not None
+        dynamic_conflict_actor = dynamic_side_actor or dynamic_turn_path_actor or metadata_dynamic_conflict_actor
+        strict_dynamic_conflict_actor = strict_side_actor or dynamic_turn_path_actor or metadata_dynamic_conflict_actor
 
         verified_lead_vehicle = closest_lead_vehicle
         lead_identifier = None
-        if speed_reduced_by_obj_id not in (None, -1):
+        if 'vehicle' in speed_reduced_type and self._has_valid_id(speed_reduced_by_obj_id):
             lead_identifier = speed_reduced_by_obj_id
-        elif vehicle_affecting_id not in (None, -1):
+        elif self._has_valid_id(vehicle_affecting_id):
             lead_identifier = vehicle_affecting_id
         if lead_identifier is not None:
             lead_id_matches = (
@@ -315,8 +484,13 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
         )
 
         verified_rule_or_static_stop = verified_traffic_stop or verified_stop_sign or verified_construction
-        following_only = verified_lead_following and not dynamic_conflict_actor
-        if dynamic_conflict_actor and expert_yields and not verified_rule_or_static_stop and not following_only:
+        lead_confounds_yield = (
+            verified_lead_following
+            and not dynamic_turn_path_actor
+            and not very_close_side_actor
+            and not metadata_dynamic_conflict_actor
+        )
+        if strict_dynamic_conflict_actor and expert_slows_or_waits and not verified_rule_or_static_stop and not lead_confounds_yield:
             labels[3] = 1.0
 
         return {
@@ -325,10 +499,16 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
             'closest_side_moving': closest_side_moving,
             'closest_path_stopped': closest_path_stopped,
             'closest_lead_vehicle': closest_lead_vehicle,
+            'metadata_dynamic_hazard': metadata_dynamic_hazard,
             'moving_actor_near_path': labels[0] > 0.0 or labels[1] > 0.0,
             'moving_junction_actor': moving_junction_actor,
             'dynamic_conflict_actor': dynamic_conflict_actor,
-            'expert_yields': expert_yields,
+            'strict_dynamic_conflict_actor': strict_dynamic_conflict_actor,
+            'metadata_dynamic_conflict_actor': metadata_dynamic_conflict_actor,
+            'lead_confounds_yield': lead_confounds_yield,
+            'expert_slows_or_waits': expert_slows_or_waits,
+            'expert_slows_or_waits_from_waypoints': expert_slows_or_waits_from_waypoints,
+            'expert_slows_or_waits_from_metadata': expert_slows_or_waits_from_metadata,
             'future_path_turns': future_path_turns,
             'ego_near_junction': ego_near_junction,
             'verified_traffic_stop': verified_traffic_stop,
@@ -337,6 +517,9 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
             'verified_construction': verified_construction,
             'verified_lead_following': verified_lead_following,
             'verified_black_lead_following': verified_black_lead_following,
+            'vehicle_hazard_actor': vehicle_hazard_actor,
+            'walker_hazard_actor': walker_hazard_actor,
+            'visible_actor_count': visible_actor_count,
         }
 
     @staticmethod
@@ -429,7 +612,7 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
 
         moving_actor_near_path = False
         dynamic_conflict_actor = False
-        expert_yields = False
+        expert_slows_or_waits = False
         ego_interaction_context = False
         verified_green_light = False
         verified_traffic_stop = False
@@ -441,7 +624,7 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
         if scene_facts is not None:
             moving_actor_near_path = bool(scene_facts.get('moving_actor_near_path'))
             dynamic_conflict_actor = bool(scene_facts.get('dynamic_conflict_actor'))
-            expert_yields = bool(scene_facts.get('expert_yields'))
+            expert_slows_or_waits = bool(scene_facts.get('expert_slows_or_waits'))
             ego_interaction_context = bool(scene_facts.get('ego_near_junction') or scene_facts.get('future_path_turns'))
             verified_green_light = bool(scene_facts.get('verified_green_light'))
             verified_traffic_stop = bool(scene_facts.get('verified_traffic_stop'))
@@ -484,13 +667,13 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
                 moving_actor_near_path
                 or moving_junction_actor
                 or dynamic_conflict_actor
-                or (expert_yields and ego_interaction_context)
+                or (expert_slows_or_waits and ego_interaction_context)
             )
             green_light_conflict = mentions_green and says_to_enter and (
                 moving_actor_near_path
                 or moving_junction_actor
                 or dynamic_conflict_actor
-                or (expert_yields and ego_interaction_context)
+                or (expert_slows_or_waits and ego_interaction_context)
             )
             strict_green_light_conflict = mentions_green and strict_yield_interaction
             false_red_light = mentions_red and verified_green_light
@@ -501,7 +684,7 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
             unsupported_black_following = black_car_following_claim and (
                 strict_yield_interaction or not verified_black_lead_following
             )
-            explicit_go_conflict = says_to_enter and dynamic_conflict_actor and expert_yields
+            explicit_go_conflict = says_to_enter and dynamic_conflict_actor and expert_slows_or_waits
 
             if (
                 stale_junction_conflict
@@ -576,6 +759,7 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
                     boxes,
                     data['waypoints_org'],
                     current_measurement,
+                    future_measurements=loaded_measurements[self.hist_len - 1:],
                 )
                 actor_motion_labels, actor_motion_context = self._get_actor_motion_labels(
                     current_box_path,
