@@ -4,6 +4,7 @@ import os
 import random
 from pathlib import Path
 from pprint import PrettyPrinter
+from types import SimpleNamespace
 from typing import Dict, Optional, Tuple, List
 
 import hydra
@@ -56,6 +57,16 @@ class DrivingModel(pl.LightningModule):
         
         for key, value in cfg.items():
             setattr(self, key, value)
+
+        if not hasattr(self, "temporal_model") or self.temporal_model is None:
+            self.temporal_model = SimpleNamespace(
+                enabled=False,
+                aux_loss_weight=0.0,
+                dynamic_sample_weight=1.0,
+            )
+        self.freeze_language_model = bool(getattr(self, "freeze_language_model", False))
+        self.freeze_adaptors = bool(getattr(self, "freeze_adaptors", False))
+        self.freeze_wp_encoder = bool(getattr(self, "freeze_wp_encoder", False))
             
         self.processor = processor
         
@@ -103,7 +114,8 @@ class DrivingModel(pl.LightningModule):
         )
         self.temporal_encoder = None
         self.temporal_motion_head = None
-        if self.temporal_model.enabled:
+        temporal_enabled = bool(getattr(self.temporal_model, 'enabled', False))
+        if temporal_enabled:
             max_history_frames = max(1, self.cfg_data_module.base_dataset.hist_len - 1)
             self.temporal_encoder = hydra.utils.instantiate(
                 self.temporal_model,

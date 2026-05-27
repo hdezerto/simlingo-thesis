@@ -1,17 +1,15 @@
 {
   "defaults": {
-    "agent": "simlingo_temporal_qformer_v6_epoch009_selected",
     "benchmark": "bench2drive",
     "out_root": "${BASE_DIR}/eval_results/Bench2Drive",
     "repo_root": "${REPO_DIR}",
     "carla_root": "${CARLA_ROOT}",
     "agent_file": "${REPO_DIR}/team_code/agent_simlingo.py",
-    "checkpoint": "${REPO_DIR}/outputs/2026_05_15_14_47_37_temporal_qformer_v6_8gpu/checkpoints/epoch=009.ckpt",
     "routes_file": "${REPO_DIR}/leaderboard/data/bench2drive220.xml",
     "partition": "berzelius",
     "cpus_per_task": 4,
     "mem_gb": 24,
-    "time": "03:00:00",
+    "time": "06:00:00",
     "mail_user": "hugo.afonso.dezerto@gmail.com",
     "mail_type": "END,FAIL",
     "gpu_rank": 0,
@@ -20,12 +18,14 @@
     "height": 720,
     "debug_viz": true,
     "debug_stride": 5,
-    "debug_save_language": true
+    "debug_save_language": true,
+    "agent": "simlingo_temporal_qformer_v8_loaded_lora_final_selected",
+    "checkpoint": "${REPO_DIR}/outputs/2026_05_24_17_47_08_temporal_qformer_v8_loaded_lora_8gpu/checkpoints/final.ckpt"
   },
   "meta": {
-    "source": "Temporal Q-former v6 epoch-009 selected failure cases",
+    "source": "Temporal Q-former v8 loaded-LoRA final checkpoint selected failure cases",
     "seed_assumption": "All requested routes rendered with seed 1",
-    "checkpoint_note": "DeepSpeed checkpoint directory; wait until epoch=009.ckpt exists before submitting."
+    "checkpoint_note": "Final checkpoint saved after completed v8 training run."
   },
   "cases": [
     {

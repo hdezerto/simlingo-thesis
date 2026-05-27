@@ -95,6 +95,36 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
 
         raise FileNotFoundError(f"Could not find .hydra/config.yaml for checkpoint: {checkpoint_path}")
 
+    @staticmethod
+    def _ensure_current_config_defaults(cfg):
+        """Allow released baseline checkpoints with older Hydra configs to run."""
+        OmegaConf.set_struct(cfg, False)
+
+        if OmegaConf.select(cfg, "model.temporal_model", default=None) is None:
+            cfg.model.temporal_model = {
+                "enabled": False,
+                "num_queries": 0,
+                "aux_loss_weight": 0.0,
+                "dynamic_sample_weight": 1.0,
+            }
+        else:
+            temporal_model = cfg.model.temporal_model
+            temporal_defaults = {
+                "enabled": False,
+                "num_queries": 0,
+                "aux_loss_weight": 0.0,
+                "dynamic_sample_weight": 1.0,
+            }
+            for key, value in temporal_defaults.items():
+                if OmegaConf.select(cfg, f"model.temporal_model.{key}", default=None) is None:
+                    setattr(temporal_model, key, value)
+
+        for key in ("freeze_language_model", "freeze_adaptors", "freeze_wp_encoder"):
+            if OmegaConf.select(cfg, f"model.{key}", default=None) is None:
+                setattr(cfg.model, key, False)
+
+        return cfg
+
     def _preprocess_internvl_frame(self, frame: np.ndarray, transform):
         image = Image.fromarray(frame.transpose(1, 2, 0))
         images = dynamic_preprocess(
@@ -220,6 +250,7 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
         self.config_load_path = self._resolve_run_config_path(self.config_path)
         with open(self.config_load_path, 'r') as file:
             cfg = OmegaConf.load(file)
+        cfg = self._ensure_current_config_defaults(cfg)
         self.cfg = cfg
         self.cfg.model.vision_model.use_global_img = cfg.data_module.use_global_img
         self.temporal_enabled = bool(getattr(self.cfg.model.temporal_model, "enabled", False))
@@ -571,12 +602,13 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
                 self.image_transform,
             )
 
-            current_frame_feature = self._encode_processed_frames(
-                current_pixel_values.unsqueeze(0)
-            )[0]
-            precomputed_frame_features = self._append_and_get_feature_history(
-                current_frame_feature
-            )
+            if self.temporal_enabled:
+                current_frame_feature = self._encode_processed_frames(
+                    current_pixel_values.unsqueeze(0)
+                )[0]
+                precomputed_frame_features = self._append_and_get_feature_history(
+                    current_frame_feature
+                )
             processed_image = current_pixel_values.unsqueeze(0).unsqueeze(0)
             image_sizes = torch.tensor([current_image_size]).unsqueeze(0)
             num_patches = processed_image.shape[2]
