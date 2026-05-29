@@ -406,7 +406,7 @@ class DrivingModel(pl.LightningModule):
             loss_dict.update(temporal_aux)
 
         # --- Cause 2: Upweight dynamic (braking) samples ---
-        if self.temporal_encoder is not None and self.dynamic_sample_weight != 1.0:
+        if self.dynamic_sample_weight != 1.0:
             sample_weights = self._compute_dynamic_sample_weights(example)  # [B]
             for key in list(loss_dict.keys()):
                 if key.endswith('loss') and key != 'temporal_motion_loss':

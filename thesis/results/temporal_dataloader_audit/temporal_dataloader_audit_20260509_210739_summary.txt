@@ -1,0 +1,13 @@
+Temporal dataloader alignment audit
+experiment: temporal_qformer_v4_nogate
+split: train
+bucket: all
+dataset: all
+data_root: /scratch/local/x_hugaf/simlingo/16510305/database/simlingo
+bucket_root: /scratch/local/x_hugaf/simlingo/16510305/database/bucketsv2_simlingo
+max_routes: 100
+load_item: True
+jsonl: thesis/results/temporal_dataloader_audit/temporal_dataloader_audit_20260509_210739.jsonl
+
+samples_written: 80
+samples_failed: 0

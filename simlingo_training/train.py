@@ -75,7 +75,9 @@ def main(cfg: TrainConfig):
             state_dict = {key: value for key, value in state_dict.items() if key not in lora_keys}
             print(f"Resetting LLM LoRA: skipped {len(lora_keys)} LoRA checkpoint tensors.")
 
-        strict_checkpoint_loading = not cfg.model.temporal_model.enabled
+        strict_checkpoint_loading = not (
+            cfg.model.temporal_model.enabled or reset_lora
+        )
         load_result = model.load_state_dict(state_dict, strict=strict_checkpoint_loading)
         if not strict_checkpoint_loading:
             missing_keys = list(load_result.missing_keys)

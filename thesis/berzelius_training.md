@@ -48,9 +48,13 @@ Useful variables from `thesis/env.sh`:
 - `LOG_ROOT=${BASE_DIR}/logs`
 - `EVAL_OUT_ROOT=${BASE_DIR}/eval_results/Bench2Drive`
 - `EVAL_RUN_NAME=simlingo`
-- `BENCH2DRIVE_ROOT=${EVAL_OUT_ROOT}/${EVAL_RUN_NAME}/bench2drive`
+- `EVAL_AGENT_NAME=${EVAL_RUN_NAME}`
+- `BENCH2DRIVE_ROOT=${EVAL_OUT_ROOT}/${EVAL_AGENT_NAME}/bench2drive`
 - `MODEL_CKPT=${BASE_DIR}/checkpoints/simlingo_pretrained/simlingo/checkpoints/epoch=013.ckpt/pytorch_model.pt`
 - `SLURM_ACCOUNT=berzelius-2025-435`
+
+Note: the storage project directory is `/proj/berzelius-2023-154`, but the
+current Slurm allocation account is `berzelius-2025-435`.
 
 Quick check:
 
@@ -185,8 +189,8 @@ export MAX_JOBS=8
 
 ## 6. Training Jobs
 
-Full temporal training jobs use archive-aware Slurm launchers under
-`thesis/slurm/`. Version-specific experiment settings live in
+Training jobs use archive-aware Slurm launchers under `thesis/slurm/`.
+Version-specific experiment settings live in
 `simlingo_training/config/experiment/`.
 
 Shared hardware request:
@@ -213,13 +217,13 @@ sbatch thesis/slurm/<training_launcher>.slurm
 Current relevant training launchers:
 
 ```bash
-thesis/slurm/train_temporal_qformer_v6.slurm              # strongest completed temporal result so far
-thesis/slurm/train_temporal_delta_feature_v3.slurm        # best completed delta-feature selected-route evidence
-thesis/slurm/train_temporal_delta_feature_v4.slurm        # completed fresh-LoRA delta ablation
-thesis/slurm/train_temporal_qformer_v7.slurm              # completed fresh-LoRA Q-former ablation
-thesis/slurm/train_temporal_qformer_v8_loaded_lora.slurm  # completed v8 main run: revised supervision + loaded SimLingo LoRA
-thesis/slurm/train_temporal_qformer_v8_fresh_lora.slurm   # completed v8 ablation: revised supervision + fresh LLM LoRA
+thesis/slurm/train_temporal_qformer_v8_fresh_lora.slurm              # completed main Q-former run: corrected supervision + fresh LLM LoRA
+thesis/slurm/train_temporal_qformer_v8_loaded_lora.slurm             # completed diagnostic: corrected supervision + loaded SimLingo LoRA
+thesis/slurm/train_temporal_qformer_v8_fresh_lora_no_temporal.slurm  # prepared main ablation: corrected supervision + fresh LLM LoRA + no temporal module
+thesis/slurm/train_temporal_delta_feature_v5_fresh_lora.slurm        # prepared next run: corrected supervision + fresh LLM LoRA + delta adapter
 ```
+
+Older Q-former, gate, and delta launchers are kept for provenance but should not be treated as final thesis comparisons because they used earlier supervision code or exploratory settings.
 
 Each launcher:
 
@@ -254,7 +258,8 @@ scontrol show job <jobid>
 DeepSpeed checkpoints are directories:
 
 - `outputs/.../checkpoints/epoch=007.ckpt`
-- `outputs/.../checkpoints/last.ckpt`
+- `outputs/.../checkpoints/final.ckpt`
+- `outputs/.../checkpoints/last.ckpt`, in some older/resumed runs
 
 These are training-resume checkpoints, not plain `torch.load(...)` files.
 
@@ -265,7 +270,7 @@ cd "${REPO_DIR}"
 mkdir -p /tmp/${USER}_triton
 
 RUN_DIR="outputs/<run_name>"
-EPOCH="epoch=013"
+EPOCH="final"        # or epoch=013, etc.
 
 PYTHONPATH="${REPO_DIR}" \
 TRITON_CACHE_DIR="/tmp/${USER}_triton" \
@@ -284,30 +289,26 @@ Rendering can load either the DeepSpeed checkpoint directory or the converted
 
 ## 8. Full Bench2Drive Evaluation
 
-Workflow:
+Run full evaluations from tmux with the dedicated launchers. They set the
+checkpoint, unique eval name, output root, fp32 conversion when needed, and
+`max_num_jobs.txt`.
 
-1. run the model online on all Bench2Drive routes
-2. merge the per-route JSON files
-3. run scenario-failure analysis
-4. render selected cases if needed
-
-Do not merge/analyze before online evaluation finishes.
-
-Run full evaluation from tmux:
+Main thesis evaluations:
 
 ```bash
-export MODEL_CKPT="${REPO_DIR}/outputs/<run_name>/checkpoints/<checkpoint>"
-export EVAL_RUN_NAME="<unique_eval_name>"
-source thesis/env.sh
-echo "8" > max_num_jobs.txt
-python start_eval_simlingo.py
+MAX_EVAL_JOBS=8 bash thesis/scripts/launch_baseline_current_full_eval.sh
+MAX_EVAL_JOBS=8 bash thesis/scripts/launch_temporal_qformer_v8_fresh_lora_final_full_eval.sh
 ```
 
-Important:
+Historical/provenance evaluation:
 
-- always use a unique `EVAL_RUN_NAME`
-- default `simlingo` can collide with baseline results
-- `start_eval_simlingo.py` skips routes with completed result files
+```bash
+MAX_EVAL_JOBS=8 bash thesis/scripts/launch_temporal_qformer_v6_epoch013_full_eval.sh
+```
+
+`start_eval_simlingo.py` skips routes with completed result files, so a crashed
+controller can be resumed with the same launcher after active route jobs finish.
+Do not merge/analyze before online evaluation finishes.
 
 After all routes finish:
 
@@ -331,13 +332,16 @@ Rendering uses:
 - `team_code/agent_simlingo.py`
 - `thesis/rendering/submit_render_jobs.py`
 
-Current selected-route manifests:
+Current thesis-relevant selected-route manifests:
+
+- `thesis/rendering/manifests/render_manifest_temporal_qformer_v8_loaded_lora_final_selected.json`
+- `thesis/rendering/manifests/render_manifest_temporal_qformer_v8_fresh_lora_final_selected.json`
+
+Older provenance manifests:
 
 - `thesis/rendering/manifests/render_manifest_temporal_delta_feature_v4_final_selected.json`
 - `thesis/rendering/manifests/render_manifest_temporal_qformer_v6_epoch013_selected.json`
 - `thesis/rendering/manifests/render_manifest_temporal_qformer_v7_final_selected.json`
-- `thesis/rendering/manifests/render_manifest_temporal_qformer_v8_loaded_lora_final_selected.json`
-- `thesis/rendering/manifests/render_manifest_temporal_qformer_v8_fresh_lora_final_selected.json`
 
 For new runs, create a manifest with:
 
@@ -377,11 +381,14 @@ Render outputs are written under:
 ${EVAL_OUT_ROOT}/<agent_name>/bench2drive/<seed>/
 ```
 
+------------
+
+
 ## 10. Temporal Implementation Summary
 
 Temporal input and injection:
 
-- Training history is old-to-new; the last frame is current. With `hist_len=5` and `history_stride=1`, frames are spaced by the dataset interval of `5` CARLA ticks.
+- Training history is old-to-new; the last frame is current. Main temporal runs use `hist_len=5` and `history_stride=1`, so frames are spaced by the dataset interval of `5` CARLA ticks. The no-temporal ablation uses `hist_len=1`.
 - CARLA inference encodes each current frame once, stores it in `frame_feature_buffer`, and samples history at the training spacing. Override only with `TEMPORAL_INFERENCE_STRIDE=<sim_steps>`.
 - Token layout:
 
@@ -399,8 +406,8 @@ Temporal methods:
 
 | Method | Core idea | Status |
 | --- | --- | --- |
-| Q-former | Learned query tokens attend over temporal visual memory | Best completed method so far: v6. v8 loaded/fresh LoRA training completed; final selected renders are in progress |
-| Delta feature | Encode current-vs-past feature deltas into compact motion tokens | Useful ablation, but less promising than Q-former on selected renders |
+| Q-former | Learned query tokens attend over temporal visual memory; final v8 runs use delta-enriched memory from past features, signed deltas, and absolute deltas | Main completed thesis method: v8 fresh LoRA. v6 remains useful provenance but is not the final method because it used older supervision |
+| Delta feature | Encode current-vs-past feature deltas into compact motion tokens | Delta v5 is prepared as the fair corrected-supervision comparison; older delta results are provenance |
 
 Common temporal training setup:
 
@@ -408,6 +415,7 @@ Common temporal training setup:
 - Keep current-frame image tokens; temporal modules add history tokens instead of replacing the image.
 - Put temporal tokens inside `<img>...</img>` and use the mild prompt: `Consider nearby traffic motion and whether the ego path is clear.`
 - Add box-derived motion commentary, an auxiliary temporal motion head, and dynamic sample weighting.
+- The no-temporal ablation keeps corrected commentary/motion-description supervision and dynamic sample weighting, but has no temporal tokens or auxiliary temporal motion head.
 
 ### Temporal Motion Head
 
@@ -433,7 +441,7 @@ Labels are multi-label:
 | `2` | Stopped actor near or blocking the ego future path |
 | `3` | Strict dynamic-yield interaction |
 
-The loss is masked BCE-with-logits, weighted by `aux_loss_weight=0.5`. It does not replace the main language/route/waypoint losses. `dynamic_sample_weight` is separate and upweights main losses when `actor_motion_labels[3]=1`; v8 uses `3.0` for loaded LoRA and `2.0` for fresh LoRA.
+The loss is masked BCE-with-logits, weighted by `aux_loss_weight=0.5`. It does not replace the main language/route/waypoint losses. `dynamic_sample_weight` is separate and upweights main losses when `actor_motion_labels[3]=1`; v8 uses `3.0` for loaded LoRA and `2.0` for fresh LoRA. The no-temporal v8 ablation keeps `dynamic_sample_weight=2.0` but disables this auxiliary temporal motion loss.
 
 ### Supervision Versions
 
@@ -455,106 +463,69 @@ Inference fixes:
 - Language generation uses greedy decoding with `temperature=0.0`.
 - CARLA can still vary due to actor spawning and simulator state, so renders with spawn warnings are weak evidence.
 
-## 11. Diagnostic Tests And Results
+## 11. Audits
 
-These are controlled renders/audits, not full benchmark results.
+This section tracks checks that validate the data and supervision pipeline. It
+should not contain model comparisons, ablations, or qualitative behavior
+analysis.
 
-| Question | Result | Interpretation |
+| Audit | Evidence | Thesis use |
 | --- | --- | --- |
-| Does temporal signal exist? | Route `4683`, frame `185`: Q-former v3 real-vs-repeat L2 `2.00`, cosine `0.986`; Delta v1 L2 `19.81`, cosine `-0.283` | Delta tokens were much more motion-sensitive than Q-former v3 tokens |
-| Does temporal history change rollout? | v3 route `4683`: real score `42`, repeat-current `36`, zero `60` | Temporal history affects rollout, but real history was not reliably better |
-| Is generated commentary the main bottleneck? | No-CoT action did not improve selected v3 failures; route `4683` got worse | Keep normal commentary-conditioned driving; no-CoT is diagnostic only |
-| Can prompting alone fix it? | Strong motion prompt on v4 did not improve selected renders and produced OOD text | Prompt-only changes are risky unless trained with matching wording |
-| Is the data pipeline sane? | Temporal dataloader audit: `40` driving + `40` dreamer samples, `0` failures | Dataloader wiring is not the main problem |
-| Does v8 scene-fact supervision select useful cases? | `scene_facts_v3_yield_review`: `200` candidates, `109` accepted yield, `68` rule/static rejects, `23` lead-following rejects, `0` other rejects; no final stale junction, green-light, or speed-up phrases | Audit supported launching Q-former v8; final driving effect is still being evaluated |
+| Temporal dataloader wiring | Audit: `40` driving + `40` dreamer samples, `0` failures | Confirms history frames and temporal inputs are loaded correctly |
+| v8 scene-fact supervision | `scene_facts_v3_yield_review`: `200` candidates, `109` accepted yield, `68` rule/static rejects, `23` lead-following rejects, `0` other rejects; no final stale junction, green-light, or speed-up phrases | Supports using v8 supervision as the final corrected-supervision recipe |
 
-## 12. Experiment Evidence
+Older prompt-only, no-CoT, v3/v4 temporal-signal, and old-supervision history
+ablations are kept for reference only. They should not be used as final thesis
+evidence because they were run on superseded supervision or exploratory configs.
 
-| Experiment | Main evidence | Interpretation |
+## 12. Experiment Status And Thesis Evidence
+
+| Experiment | Main evidence | Thesis status |
 | --- | --- | --- |
-| v1 Q-former | `hist_len=3`, `queries=8`, `epochs=5`; wiring test completed | Too small/short to fix motion failures |
-| v2 Q-former | `hist_len=5`, `queries=16`; final gate sigmoid about `0.167`; selected renders still collided on `3936`, `4183`, `4468`, `4683` | Temporal influence likely too weak |
-| v3 Q-former gate 0 | Full `epoch=011` eval: driving score `86.09 +/- 0.70`, success `67.42% +/- 0.77%`; route `4683` diagnostic not robust | Stronger gate helped some cases, not consistently |
-| v4 Q-former no gate | `epoch=011` selected renders still collided on all five routes | No gate + trainable adaptors did not fix failures |
-| Delta feature v1 | Trained through `epoch=013`; selected renders not clearly better; stale stopped-vehicle commentary on `4683` | Useful ablation, not a clear fix |
-| Delta feature v2 | Completed `epoch=013`; route `3936` scored `100`, but `11755`, `4183`, `4468`, `4683` still collided | Useful intermediate run before strict cleanup |
-| Q-former v5 | Completed `epoch=013`; explicit delta-aware memory; selected renders still collided on all five routes | More logical architecture, but supervision still weak |
-| Delta feature v3 | Completed `epoch=013`; strict interaction cleanup. `epoch=009` improved `3936`, but `epoch=013` regressed | Strict cleanup did not make delta robust; longer training hurt selected behavior |
-| Delta feature v4 | Fresh LoRA + previous scene-fact cleanup. Final selected renders collided on all five routes; `3936`, `4468`, and `4683` also timed out | Fresh LoRA + delta features degraded selected-route behavior |
-| Q-former v6 | Completed `epoch=013`; strict interaction cleanup. Full eval: driving score `87.63 +/- 0.98`, success `70.76% +/- 1.50%`. Final selected renders fixed `3936` and `4683`; `11755`, `4183`, `4468` still collided | Best temporal result so far, but still fragile |
-| Q-former v7 | Fresh LoRA + previous scene-fact cleanup. Final selected renders regressed: only `3936` avoided collision, but it timed out with a red-light infraction | Keep v6 as strongest completed result; cause of regression remains open |
-| Q-former v8 loaded LoRA | Completed training; same Q-former architecture as v6/v7, revised v8 supervision, loaded SimLingo LoRA, `dynamic_sample_weight=3.0`; final selected renders are in progress | Main v8 run; evaluate selected renders before deciding on full eval |
-| Q-former v8 fresh LoRA | Completed training; same as v8 loaded LoRA, but resets LLM LoRA and lowers `dynamic_sample_weight` to `2.0`; final selected renders are in progress | Ablation for LoRA reset under the same revised supervision; compare after renders finish |
+| Corrected SimLingo baseline | Full eval: driving score `86.61 +/- 1.02`, success `68.18% +/- 0.98%` | Final baseline for metric comparison |
+| Q-former v8 fresh LoRA | Full eval: driving score `87.06 +/- 0.14`, success `69.85% +/- 0.21%`; selected renders show cleaner commentary than older runs, with no `black car` hits and only rare stale junction-clear phrases; behavior remains cautious in dense left-turn traffic streams, with several minor rear-contact scratches except `11755` where side visibility is likely limiting | Main current thesis result |
+| Q-former v8 loaded LoRA | Selected renders weaker than v8 fresh, including a frontal collision on `4183`; `dynamic_sample_weight=3.0` | Diagnostic for loaded-vs-fresh LoRA, not the main result |
+| No-temporal v8 fresh-LoRA ablation | Training running as job `16682954`: corrected supervision, fresh LoRA, `hist_len=1`, no temporal tokens, no auxiliary temporal motion loss, `dynamic_sample_weight=2.0` | Main ablation; wait for training, then evaluate/render |
+| Delta feature v5 fresh LoRA | Training running as job `16682900`: corrected v8 supervision, fresh LoRA, `hist_len=5`, delta adapter, `dynamic_sample_weight=2.0` | Fair Q-former-vs-delta comparison; wait for training, then run selected renders |
+| Corrected history ablations | Pending: real history vs repeated-current history vs zero history on the corrected v8 model | Needed before making a final causal claim that the temporal module uses history effectively |
+| Archived old-supervision/exploratory runs | Q-former v1-v7, gate/history diagnostics, and Delta v1-v4 were moved to archive or kept for reference | Do not use as final thesis comparisons, except to explain method evolution if needed |
 
-Selected-route render results:
+Current interpretation:
 
-| Route | Scenario | Delta v2 `e13` | Q-former v5 `e13` | Delta v3 `e09` | Delta v3 `e13` | Delta v4 final | Q-former v6 `e09` | Q-former v6 `e13` | Q-former v7 final |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `11755` | `EnterActorFlow_1` | `60`, collision | `60`, collision | `60`, collision | `60`, collision | `60`, collision | `60`, collision | `60`, collision | `60`, collision |
-| `3936` | `SignalizedJunctionLeftTurn_1` | `100`, no collision | `60`, collision | `100`, no collision | `60`, collision | `42`, collision + timeout | `100`, no collision | `100`, no collision | `49`, timeout + red-light infraction |
-| `4183` | `SignalizedJunctionLeftTurn_1` | `60`, collision | `36`, two collisions | `60`, collision | `60`, collision | `60`, collision | `60`, collision | `60`, collision | `60`, collision |
-| `4468` | `SignalizedJunctionLeftTurn_1` | `60`, collision | `60`, collision | `60`, collision | `60`, collision | `42`, collision + timeout | `42`, collision + timeout | `60`, collision | `60`, collision |
-| `4683` | `SignalizedJunctionLeftTurn_1` | `60`, collision | `60`, collision | `60`, collision | `42`, collision + timeout | `42`, collision + timeout | `42`, collision + timeout | `100`, no collision | `60`, collision |
-
-Interpretation:
-
-- Q-former v6 `epoch=013` is the strongest current result: it has the best selected-route behavior and full-eval metrics of `87.63 +/- 0.98` driving score and `70.76% +/- 1.50%` success.
-- Delta v4 and Q-former v7 show that later fresh-LoRA setups did not improve selected-route behavior. The cause is still open: LoRA reset, supervision changes, yield weighting, or their interaction could be responsible.
-- Results are not robust enough to claim the problem is solved. Remaining renders still show false traffic-light claims, unsupported `black car` / `stay behind`, and stale `vehicles are stopped` / `junction is clear` commentary.
-- `11755` may require side information that a front-camera-only model does not have, but the commentary should still avoid confidently claiming the path is clear.
+- The corrected baseline and Q-former v8 fresh LoRA are the current main metric comparison.
+- Q-former v8 fresh LoRA is preferred over Q-former v6 for the thesis because its supervision story is cleaner and easier to justify, even though v6 had a slightly higher exploratory aggregate score.
+- The no-temporal ablation is needed to separate temporal-context effects from corrected supervision, fresh LoRA, and dynamic sample weighting.
+- Delta v5 is needed for a fair Q-former-vs-delta comparison under the same corrected-supervision recipe.
+- Final claims should wait for the no-temporal ablation, Delta v5 selected renders, and corrected history ablations if they finish in time.
 
 
 
+
+
+----------------------------------------
 
 
 ## 13. To Do
 
 Current status:
 
-- Q-former v8 loaded-LoRA training completed successfully.
-- Q-former v8 fresh-LoRA training completed successfully.
-- Final selected-route renders for both v8 models are still in progress.
-- Baseline evalfix full evaluation is still running.
+- Main completed comparison: corrected baseline (`86.61 +/- 1.02`, success `68.18% +/- 0.98%`) vs Q-former v8 fresh LoRA (`87.06 +/- 0.14`, success `69.85% +/- 0.21%`).
+- Running jobs: no-temporal v8 fresh-LoRA ablation (`16682954`) and Delta feature v5 fresh-LoRA (`16682900`).
+- Q-former v8 loaded-vs-fresh selected-render comparison is complete; old-supervision delta/gate/history runs are archived for reference only.
 
-Experiment tasks:
+Next experiment steps:
 
-Main experiments:
+- Let jobs `16682954` and `16682900` finish.
+- For no-temporal v8: evaluate/render enough to decide whether v8 gains come from temporal context or mainly from corrected supervision/fresh LoRA.
+- For Delta v5: render selected routes `11755`, `3936`, `4183`, `4468`, and `4683`; run full Bench2Drive only if it looks competitive or a complete Q-former-vs-delta table is required.
+- Run corrected history ablations for Q-former v8 fresh: real history vs repeated-current history vs zero history.
 
-- Finish, merge, and analyze the baseline evalfix run; replace the provisional old baseline comparison with corrected baseline metrics.
-- Finish v8 selected renders and compare Q-former v6, v8 loaded LoRA, and v8 fresh LoRA on selected-route driving outcome and commentary quality.
-- If a v8 model improves over Q-former v6 on selected routes, run full Bench2Drive evaluation for that v8 model.
-- Compare the best temporal model against the corrected baseline using full metrics, scenario-failure analysis, and selected-route qualitative evidence; compare Q-former vs delta-feature adapters with the same evidence where available.
+Thesis-writing steps while jobs run:
 
-Extended experiments:
-
-- Try multi-view input for cases like `11755`.
-
-Ablation tasks:
-
-Main ablations / diagnostics:
-
-- Ablate temporal module: with and without temporal module enabled, to check if the improvement isnt just because of the new supervision.
-- Check if module is actually capturing time: evaluate real temporal history vs repeated-current history vs zero history for the best temporal model.
-- Check impact of fresh lora weights: compare v8 loaded LoRA vs v8 fresh LoRA on selected routes, using both driving outcome and commentary quality.
-
-Extended ablations:
-
-- Ablate the temporal motion loss.
-- Ablate number of Q-former query tokens.
-
-
-
-Thesis-writing tasks:
-
-- Update the thesis plan with the final story: baseline, temporal adapters, Q-former vs delta, supervision issues, and v8 follow-up.
-- Draft introduction: motivation, research question, hypothesis, and contributions.
-- Draft background/related work: VLA driving, SimLingo, temporal context, Bench2Drive, and compact adapters.
-- Draft method: Q-former adapter, temporal token insertion, temporal motion head, interaction-aware supervision.
-- Draft experimental setup: training setup, compute/resources, selected-route render protocol, full-evaluation protocol.
-- Prepare result tables for baseline, Q-former v6, and any final v8 model selected for full evaluation.
-- Draft discussion: what improved, what failed, possible causes, and what the ablations show.
-- Draft limitations: front-camera-only input, CARLA variability, noisy commentary supervision, selected-route evidence vs full benchmark metrics.
-
+- Finish/polish introduction and background.
+- Draft baseline/motivation, method, and experimental setup.
+- Prepare result-table templates for baseline, Q-former v8 fresh, no-temporal v8, and Delta v5.
+- Draft discussion/limitations only after the ablation and Delta results are known.
 
 
 

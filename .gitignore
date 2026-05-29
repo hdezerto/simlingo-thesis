@@ -1,14 +1,18 @@
-viz
-database/
-pretrained/
-results/
-!thesis/results/
-thesis/results/*
-!thesis/results/scenario_failure_report_baseline.txt
-outputs/
-eval/
-eval_results/
-pretrained/
+# Large repo-local data, checkpoints, outputs, and evaluation artifacts.
+# Some current artifacts live outside the repo under /proj/...; these rules are
+# defensive in case scripts create the same directories inside the repo root.
+/viz/
+/database/
+/pretrained/
+/results/
+/outputs/
+/eval/
+/eval_results/
+
+# Keep thesis result summaries/reports trackable, but ignore bulky raw evidence.
+thesis/results/**/*.jsonl
+thesis/results/**/frames/
+thesis/results/archive/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
