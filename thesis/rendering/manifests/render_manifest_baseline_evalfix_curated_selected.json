@@ -1,0 +1,160 @@
+{
+  "defaults": {
+    "benchmark": "bench2drive",
+    "out_root": "${BASE_DIR}/eval_results/Bench2Drive",
+    "repo_root": "${REPO_DIR}",
+    "carla_root": "${CARLA_ROOT}",
+    "agent_file": "${REPO_DIR}/team_code/agent_simlingo.py",
+    "routes_file": "${REPO_DIR}/leaderboard/data/bench2drive220.xml",
+    "partition": "berzelius",
+    "cpus_per_task": 4,
+    "mem_gb": 24,
+    "time": "06:00:00",
+    "mail_user": "hugo.afonso.dezerto@gmail.com",
+    "mail_type": "END,FAIL",
+    "gpu_rank": 0,
+    "fps": 20,
+    "width": 1280,
+    "height": 720,
+    "debug_viz": true,
+    "debug_stride": 5,
+    "debug_save_language": true,
+    "agent": "simlingo_baseline_evalfix_curated_selected",
+    "checkpoint": "${BASE_DIR}/checkpoints/simlingo_pretrained/simlingo/checkpoints/epoch=013.ckpt/pytorch_model.pt"
+  },
+  "meta": {
+    "source": "Corrected SimLingo baseline curated routes selected from the full evaluation and baseline-vs-Q-former scenario comparison.",
+    "seed_assumption": "All requested routes rendered with seed 1.",
+    "selection_note": "Chapter 3 route grouping is listed once in chapter_3_groups.",
+    "model_label": "corrected baseline",
+    "chapter_3_groups": {
+      "main_temporal_set": [
+        "3936",
+        "4183",
+        "4468",
+        "4683"
+      ],
+      "boundary_dynamic_case": [
+        "11755"
+      ],
+      "limitation_case": [
+        "3373"
+      ]
+    },
+    "results_scenario_comparison_set": {
+      "fixed_or_improved": [
+        "2273",
+        "17569",
+        "27532"
+      ],
+      "regressed": [
+        "3670",
+        "24294"
+      ],
+      "worse_but_both_fail": [
+        "28243"
+      ],
+      "persistent_failed_both_same_count_already_covered_by_chapter_3": [
+        "11755"
+      ]
+    }
+  },
+  "cases": [
+    {
+      "route_id": "11755",
+      "seed": 1,
+      "scenario": "EnterActorFlow_1",
+      "_thesis_group": "chapter_3_baseline_motivation_set",
+      "_comparison_category": "baseline_motivation_failed_both_same_count",
+      "_selection_reason": "Chapter 3: actor-flow junction failure selected from corrected-baseline systematic route failures; useful for motion-sensitive interaction analysis, while also showing side-view limits."
+    },
+    {
+      "route_id": "3936",
+      "seed": 1,
+      "scenario": "SignalizedJunctionLeftTurn_1",
+      "_thesis_group": "chapter_3_baseline_motivation_set",
+      "_comparison_category": "baseline_motivation_still_hard",
+      "_selection_reason": "Chapter 3: signalized left-turn failure where the baseline must reason about moving cross traffic, not only the green light."
+    },
+    {
+      "route_id": "4183",
+      "seed": 1,
+      "scenario": "SignalizedJunctionLeftTurn_1",
+      "_thesis_group": "chapter_3_baseline_motivation_set",
+      "_comparison_category": "baseline_motivation_left_turn",
+      "_selection_reason": "Chapter 3: signalized left-turn failure kept from the original qualitative analysis after confirming it is still a corrected-baseline systematic failure."
+    },
+    {
+      "route_id": "4468",
+      "seed": 1,
+      "scenario": "SignalizedJunctionLeftTurn_1",
+      "_thesis_group": "chapter_3_baseline_motivation_set",
+      "_comparison_category": "baseline_motivation_still_hard",
+      "_selection_reason": "Chapter 3: signalized left-turn failure kept from the original qualitative analysis; useful as a difficult case that remains hard for the temporal model."
+    },
+    {
+      "route_id": "4683",
+      "seed": 1,
+      "scenario": "SignalizedJunctionLeftTurn_1",
+      "_thesis_group": "chapter_3_baseline_motivation_set",
+      "_comparison_category": "baseline_motivation_seed_level_change",
+      "_selection_reason": "Chapter 3: signalized left-turn failure kept from the original qualitative analysis; useful later because model behavior changes on this seed."
+    },
+    {
+      "route_id": "3373",
+      "seed": 1,
+      "scenario": "YieldToEmergencyVehicle_1",
+      "_thesis_group": "chapter_3_baseline_motivation_set",
+      "_comparison_category": "baseline_motivation_limitation",
+      "_selection_reason": "Chapter 3 limitation case: emergency-vehicle / limited-view failure, included to show that not all baseline failures are solved by front-camera temporal context."
+    },
+    {
+      "route_id": "2273",
+      "seed": 1,
+      "scenario": "MergerIntoSlowTraffic_1",
+      "_thesis_group": "results_scenario_comparison_set",
+      "_comparison_category": "fixed",
+      "_selection_reason": "Results: fixed/improved case from scenario comparison; baseline fails 3/3 seeds and Q-former passes 3/3 seeds."
+    },
+    {
+      "route_id": "17569",
+      "seed": 1,
+      "scenario": "SequentialLaneChange_1",
+      "_thesis_group": "results_scenario_comparison_set",
+      "_comparison_category": "fixed",
+      "_selection_reason": "Results: fixed/improved case from scenario comparison; baseline fails 3/3 seeds and Q-former passes 3/3 seeds."
+    },
+    {
+      "route_id": "27532",
+      "seed": 1,
+      "scenario": "BlockedIntersection_1",
+      "_thesis_group": "results_scenario_comparison_set",
+      "_comparison_category": "fixed",
+      "_selection_reason": "Results: fixed/improved case from scenario comparison; baseline fails 3/3 seeds and Q-former passes 3/3 seeds."
+    },
+    {
+      "route_id": "3670",
+      "seed": 1,
+      "scenario": "NonSignalizedJunctionRightTurn_1",
+      "_thesis_group": "results_scenario_comparison_set",
+      "_comparison_category": "regressed",
+      "_selection_reason": "Results: regression case from scenario comparison; baseline passes 3/3 seeds and Q-former fails 3/3 seeds."
+    },
+    {
+      "route_id": "24294",
+      "seed": 1,
+      "scenario": "ParkingCrossingPedestrian_1",
+      "_thesis_group": "results_scenario_comparison_set",
+      "_comparison_category": "regressed",
+      "_selection_reason": "Results: regression case from scenario comparison; baseline passes 3/3 seeds and Q-former times out 3/3 seeds."
+    },
+    {
+      "route_id": "28243",
+      "seed": 1,
+      "scenario": "SignalizedJunctionLeftTurnEnterFlow_1",
+      "_thesis_group": "results_scenario_comparison_set",
+      "_comparison_category": "worse_but_both_fail",
+      "_selection_reason": "Results: worse_but_both_fail case from scenario comparison; both models can fail, but Q-former worsens from 1/3 to 3/3 failures in a dense left-turn-enter-flow scenario."
+    }
+  ]
+}

@@ -1,0 +1,95 @@
+{
+  "defaults": {
+    "benchmark": "bench2drive",
+    "out_root": "${BASE_DIR}/eval_results/Bench2Drive",
+    "repo_root": "${REPO_DIR}",
+    "carla_root": "${CARLA_ROOT}",
+    "agent_file": "${REPO_DIR}/team_code/agent_simlingo.py",
+    "routes_file": "${REPO_DIR}/leaderboard/data/bench2drive220.xml",
+    "partition": "berzelius",
+    "cpus_per_task": 4,
+    "mem_gb": 24,
+    "time": "06:00:00",
+    "mail_user": "hugo.afonso.dezerto@gmail.com",
+    "mail_type": "END,FAIL",
+    "gpu_rank": 0,
+    "fps": 20,
+    "width": 1280,
+    "height": 720,
+    "debug_viz": true,
+    "debug_stride": 5,
+    "debug_save_language": true,
+    "agent": "simlingo_temporal_qformer_v8_fresh_lora_no_temporal_chapter3_selected",
+    "checkpoint": "${REPO_DIR}/outputs/2026_05_29_04_52_41_temporal_qformer_v8_fresh_lora_no_temporal_8gpu/checkpoints/final_fp32/pytorch_model.bin"
+  },
+  "meta": {
+    "source": "No-temporal v8 fresh-LoRA diagnostic renders for the Chapter 3 baseline-motivation route set.",
+    "seed_assumption": "All requested routes rendered with seed 1.",
+    "selection_note": "Chapter 3 route grouping is listed once in chapter_3_groups.",
+    "model_label": "Q-former v8 fresh LoRA no-temporal ablation",
+    "chapter_3_groups": {
+      "main_temporal_set": [
+        "3936",
+        "4183",
+        "4468",
+        "4683"
+      ],
+      "boundary_dynamic_case": [
+        "11755"
+      ],
+      "limitation_case": [
+        "3373"
+      ]
+    }
+  },
+  "cases": [
+    {
+      "route_id": "11755",
+      "seed": 1,
+      "scenario": "EnterActorFlow_1",
+      "_thesis_group": "chapter_3_baseline_motivation_set",
+      "_selection_reason": "Chapter 3: actor-flow junction failure selected from corrected-baseline systematic route failures; useful for motion-sensitive interaction analysis, while also showing side-view limits.",
+      "_comparison_category": "baseline_motivation_failed_both_same_count"
+    },
+    {
+      "route_id": "3936",
+      "seed": 1,
+      "scenario": "SignalizedJunctionLeftTurn_1",
+      "_thesis_group": "chapter_3_baseline_motivation_set",
+      "_selection_reason": "Chapter 3: signalized left-turn failure where the baseline must reason about moving cross traffic, not only the green light.",
+      "_comparison_category": "baseline_motivation_still_hard"
+    },
+    {
+      "route_id": "4183",
+      "seed": 1,
+      "scenario": "SignalizedJunctionLeftTurn_1",
+      "_thesis_group": "chapter_3_baseline_motivation_set",
+      "_selection_reason": "Chapter 3: signalized left-turn failure kept from the original qualitative analysis after confirming it is still a corrected-baseline systematic failure.",
+      "_comparison_category": "baseline_motivation_left_turn"
+    },
+    {
+      "route_id": "4468",
+      "seed": 1,
+      "scenario": "SignalizedJunctionLeftTurn_1",
+      "_thesis_group": "chapter_3_baseline_motivation_set",
+      "_selection_reason": "Chapter 3: signalized left-turn failure kept from the original qualitative analysis; useful as a difficult case that remains hard for the temporal model.",
+      "_comparison_category": "baseline_motivation_still_hard"
+    },
+    {
+      "route_id": "4683",
+      "seed": 1,
+      "scenario": "SignalizedJunctionLeftTurn_1",
+      "_thesis_group": "chapter_3_baseline_motivation_set",
+      "_selection_reason": "Chapter 3: signalized left-turn failure kept from the original qualitative analysis; useful later because model behavior changes on this seed.",
+      "_comparison_category": "baseline_motivation_seed_level_change"
+    },
+    {
+      "route_id": "3373",
+      "seed": 1,
+      "scenario": "YieldToEmergencyVehicle_1",
+      "_thesis_group": "chapter_3_baseline_motivation_set",
+      "_selection_reason": "Chapter 3 limitation case: emergency-vehicle / limited-view failure, included to show that not all baseline failures are solved by front-camera temporal context.",
+      "_comparison_category": "baseline_motivation_limitation"
+    }
+  ]
+}

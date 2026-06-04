@@ -298,76 +298,76 @@ Main thesis evaluations:
 ```bash
 MAX_EVAL_JOBS=8 bash thesis/scripts/launch_baseline_current_full_eval.sh
 MAX_EVAL_JOBS=8 bash thesis/scripts/launch_temporal_qformer_v8_fresh_lora_final_full_eval.sh
-```
-
-Historical/provenance evaluation:
-
-```bash
-MAX_EVAL_JOBS=8 bash thesis/scripts/launch_temporal_qformer_v6_epoch013_full_eval.sh
+MAX_EVAL_JOBS=8 bash thesis/scripts/launch_temporal_qformer_v8_fresh_lora_no_temporal_full_eval.sh
+MAX_EVAL_JOBS=8 bash thesis/scripts/launch_temporal_delta_feature_v5_fresh_lora_full_eval.sh
 ```
 
 `start_eval_simlingo.py` skips routes with completed result files, so a crashed
 controller can be resumed with the same launcher after active route jobs finish.
 Do not merge/analyze before online evaluation finishes.
 
-After all routes finish:
+After all routes finish, merge metrics and use the scenario-comparison script
+for thesis evidence:
 
 ```bash
-export EVAL_RUN_NAME="<unique_eval_name>"
-source thesis/env.sh
+python thesis/analysis/merge_bench2drive_results.py \
+  -b /proj/berzelius-2023-154/users/x_hugaf/eval_results/Bench2Drive/<eval_name>/bench2drive \
+  > thesis/results/metrics_<eval_name>.txt
 
-python thesis/analysis/merge_bench2drive_results.py -b "${BENCH2DRIVE_ROOT}"
-
-python thesis/analysis/analyze_scenario_failures.py \
-  -b "${BENCH2DRIVE_ROOT}" \
-  -o thesis/results/scenario_failure_report_<unique_eval_name>.txt
+python thesis/analysis/compare_bench2drive_scenarios.py \
+  --baseline /proj/berzelius-2023-154/users/x_hugaf/eval_results/Bench2Drive/<baseline_eval_name>/bench2drive \
+  --candidate /proj/berzelius-2023-154/users/x_hugaf/eval_results/Bench2Drive/<candidate_eval_name>/bench2drive \
+  --baseline-name <baseline_label> \
+  --candidate-name <candidate_label> \
+  -o thesis/results/scenario_comparison_<baseline_label>_vs_<candidate_label>.txt
 ```
 
 Analysis expects full benchmark result files, not selected-route rendering JSONs.
 
 ## 9. Render Selected Failure Cases
 
-Rendering uses:
+Rendering uses `team_code/agent_simlingo.py` through `thesis/rendering/submit_render_jobs.py`.
 
-- `team_code/agent_simlingo.py`
-- `thesis/rendering/submit_render_jobs.py`
+Chapter 3 render groups:
 
-Current thesis-relevant selected-route manifests:
+- Main temporal set: `3936`, `4183`, `4468`, `4683`.
+  Focused signalized-left-turn cases where visible motion changes the decision.
+- Boundary dynamic case: `11755`.
+  Actor-flow case; useful, but hard to fix with front-camera history alone.
+- Limitation case: `3373`.
+  Emergency-vehicle / limited-view case; not a main temporal-success target.
 
-- `thesis/rendering/manifests/render_manifest_temporal_qformer_v8_loaded_lora_final_selected.json`
-- `thesis/rendering/manifests/render_manifest_temporal_qformer_v8_fresh_lora_final_selected.json`
+Current render manifests:
 
-Older provenance manifests:
+- `thesis/rendering/manifests/render_manifest_baseline_evalfix_curated_selected.json`
+- `thesis/rendering/manifests/render_manifest_temporal_qformer_v8_fresh_lora_curated_selected.json`
+- `thesis/rendering/manifests/render_manifest_temporal_qformer_v8_fresh_lora_no_temporal_chapter3_selected.json`
+- `thesis/rendering/manifests/render_manifest_temporal_delta_feature_v5_fresh_lora_chapter3_selected.json`
+- `thesis/rendering/manifests/render_manifest_temporal_qformer_v8_loaded_lora_chapter3_selected.json`
+- `thesis/rendering/manifests/render_manifest_temporal_qformer_v8_fresh_lora_chapter3_repeat_current.json`
 
-- `thesis/rendering/manifests/render_manifest_temporal_delta_feature_v4_final_selected.json`
-- `thesis/rendering/manifests/render_manifest_temporal_qformer_v6_epoch013_selected.json`
-- `thesis/rendering/manifests/render_manifest_temporal_qformer_v7_final_selected.json`
+Old selected-render outputs are archived at
+`${BASE_DIR}/eval_results/archive/Bench2Drive_selected_old_2026_05_31/`.
 
-For new runs, create a manifest with:
-
-- a unique `agent` name, so outputs do not overwrite older renders
-- the correct checkpoint directory or fp32 checkpoint in `checkpoint`
-- the same selected route cases when comparing versions
-- `debug_viz=true` and `debug_save_language=true` when videos/commentary are needed
-
-Dry run:
-
-```bash
-cd "${REPO_DIR}"
-source thesis/env.sh
-python thesis/rendering/submit_render_jobs.py \
-  --manifest thesis/rendering/manifests/<manifest>.json \
-  --dry-run
-```
-
-Submit:
+Use one launcher for selected renders:
 
 ```bash
 cd "${REPO_DIR}"
-source thesis/env.sh
-python thesis/rendering/submit_render_jobs.py \
-  --manifest thesis/rendering/manifests/<manifest>.json
+bash thesis/scripts/launch_selected_renders.sh --dry-run all
+bash thesis/scripts/launch_selected_renders.sh all
 ```
+
+Useful targets: `main` for baseline + Q-former v8 fresh, `diagnostics` for
+loaded/no-temporal/Delta Chapter 3 renders, and `repeat-current` for the
+real-history diagnostic. Individual targets are also available: `baseline`,
+`qformer-fresh`, `loaded`, `no-temporal`, and `delta`.
+
+The matching real-history outputs for `repeat-current` are already in
+`${BASE_DIR}/eval_results/Bench2Drive/simlingo_temporal_qformer_v8_fresh_lora_curated_selected/`.
+
+The render submitter reuses completed result JSONs and multiview frames when
+available. If a route has complete frames, the job only stitches the video on the
+CPU; if frames are missing or incomplete, it reruns the simulator route.
 
 Monitor:
 
@@ -375,11 +375,7 @@ Monitor:
 squeue -u "$USERNAME"
 ```
 
-Render outputs are written under:
-
-```bash
-${EVAL_OUT_ROOT}/<agent_name>/bench2drive/<seed>/
-```
+Render outputs are written under `${EVAL_OUT_ROOT}/<agent_name>/bench2drive/<seed>/`.
 
 ------------
 
@@ -480,54 +476,65 @@ evidence because they were run on superseded supervision or exploratory configs.
 
 ## 12. Experiment Status And Thesis Evidence
 
-| Experiment | Main evidence | Thesis status |
-| --- | --- | --- |
-| Corrected SimLingo baseline | Full eval: driving score `86.61 +/- 1.02`, success `68.18% +/- 0.98%` | Final baseline for metric comparison |
-| Q-former v8 fresh LoRA | Full eval: driving score `87.06 +/- 0.14`, success `69.85% +/- 0.21%`; selected renders show cleaner commentary than older runs, with no `black car` hits and only rare stale junction-clear phrases; behavior remains cautious in dense left-turn traffic streams, with several minor rear-contact scratches except `11755` where side visibility is likely limiting | Main current thesis result |
-| Q-former v8 loaded LoRA | Selected renders weaker than v8 fresh, including a frontal collision on `4183`; `dynamic_sample_weight=3.0` | Diagnostic for loaded-vs-fresh LoRA, not the main result |
-| No-temporal v8 fresh-LoRA ablation | Training running as job `16682954`: corrected supervision, fresh LoRA, `hist_len=1`, no temporal tokens, no auxiliary temporal motion loss, `dynamic_sample_weight=2.0` | Main ablation; wait for training, then evaluate/render |
-| Delta feature v5 fresh LoRA | Training running as job `16682900`: corrected v8 supervision, fresh LoRA, `hist_len=5`, delta adapter, `dynamic_sample_weight=2.0` | Fair Q-former-vs-delta comparison; wait for training, then run selected renders |
-| Corrected history ablations | Pending: real history vs repeated-current history vs zero history on the corrected v8 model | Needed before making a final causal claim that the temporal module uses history effectively |
-| Archived old-supervision/exploratory runs | Q-former v1-v7, gate/history diagnostics, and Delta v1-v4 were moved to archive or kept for reference | Do not use as final thesis comparisons, except to explain method evolution if needed |
+Current full-evaluation results:
+
+| Experiment | Driving score | Success | Thesis use |
+| --- | --- | --- | --- |
+| Corrected SimLingo baseline | `86.61 +/- 1.02` | `68.18% +/- 0.98%` | Final single-frame baseline |
+| No-temporal v8 fresh LoRA | `86.16 +/- 0.61` | `67.58% +/- 0.86%` | Main ablation: corrected supervision without temporal tokens |
+| Q-former v8 fresh LoRA | `87.06 +/- 0.14` | `69.85% +/- 0.21%` | Current strongest temporal model |
 
 Current interpretation:
 
-- The corrected baseline and Q-former v8 fresh LoRA are the current main metric comparison.
-- Q-former v8 fresh LoRA is preferred over Q-former v6 for the thesis because its supervision story is cleaner and easier to justify, even though v6 had a slightly higher exploratory aggregate score.
-- The no-temporal ablation is needed to separate temporal-context effects from corrected supervision, fresh LoRA, and dynamic sample weighting.
-- Delta v5 is needed for a fair Q-former-vs-delta comparison under the same corrected-supervision recipe.
-- Final claims should wait for the no-temporal ablation, Delta v5 selected renders, and corrected history ablations if they finish in time.
+- Q-former v8 fresh is the current strongest completed temporal result.
+- No-temporal v8 is the main temporal-module-off ablation.
+- Delta v5 full evaluation has completed raw route JSONs; generate the metrics
+  file before deciding whether it changes the final model selection.
+- Q-former v8 loaded LoRA remains a qualitative diagnostic only.
 
+Current running work:
 
+- Selected renders from `launch_selected_renders.sh all` are running. Completed
+  routes are reused or stitched on CPU; missing/incomplete routes rerun CARLA.
+- No new training jobs are needed for the main thesis story.
 
+Main result files for the thesis text:
 
-
-----------------------------------------
+- `thesis/results/metrics_baseline_evalfix_full.txt`
+- `thesis/results/metrics_temporal_qformer_v8_fresh_lora_final_full.txt`
+- `thesis/results/metrics_temporal_qformer_v8_fresh_lora_no_temporal_full.txt`
+- `thesis/results/scenario_comparison_baseline_evalfix_vs_qformer_v8_fresh.txt`
+- `thesis/results/temporal_dataloader_audit/temporal_dataloader_audit_20260509_210739_summary.txt`
+- `thesis/results/interaction_supervision_audit_scene_facts_v3_yield_review/interaction_supervision_audit_20260524_155732_summary.txt`
 
 
 ## 13. To Do
 
-Current status:
+Immediate experiment tasks:
 
-- Main completed comparison: corrected baseline (`86.61 +/- 1.02`, success `68.18% +/- 0.98%`) vs Q-former v8 fresh LoRA (`87.06 +/- 0.14`, success `69.85% +/- 0.21%`).
-- Running jobs: no-temporal v8 fresh-LoRA ablation (`16682954`) and Delta feature v5 fresh-LoRA (`16682900`).
-- Q-former v8 loaded-vs-fresh selected-render comparison is complete; old-supervision delta/gate/history runs are archived for reference only.
+- Wait for the selected render jobs to finish, then inspect only failed or
+  missing routes.
+- Generate the Delta v5 metrics file:
 
-Next experiment steps:
+```bash
+python thesis/analysis/merge_bench2drive_results.py \
+  -b /proj/berzelius-2023-154/users/x_hugaf/eval_results/Bench2Drive/simlingo_temporal_delta_feature_v5_fresh_lora_full/bench2drive \
+  > thesis/results/metrics_temporal_delta_feature_v5_fresh_lora_full.txt
+```
 
-- Let jobs `16682954` and `16682900` finish.
-- For no-temporal v8: evaluate/render enough to decide whether v8 gains come from temporal context or mainly from corrected supervision/fresh LoRA.
-- For Delta v5: render selected routes `11755`, `3936`, `4183`, `4468`, and `4683`; run full Bench2Drive only if it looks competitive or a complete Q-former-vs-delta table is required.
-- Run corrected history ablations for Q-former v8 fresh: real history vs repeated-current history vs zero history.
+- Add Delta v5 to the main benchmark table. Keep the main scenario comparison as
+  baseline vs Q-former v8 fresh unless Delta v5 clearly becomes the final winner.
+- Treat repeated `11755` crashes in no-temporal/repeat-current renders as CARLA
+  instability unless that route becomes essential to the final argument.
 
-Thesis-writing steps while jobs run:
+Writing focus now:
 
-- Finish/polish introduction and background.
-- Draft baseline/motivation, method, and experimental setup.
-- Prepare result-table templates for baseline, Q-former v8 fresh, no-temporal v8, and Delta v5.
-- Draft discussion/limitations only after the ablation and Delta results are known.
-
-
+- Finish Chapter 3 with corrected-baseline metrics and the Chapter 3 render set.
+- Write Chapters 4 and 5 without waiting for render cleanup.
+- Draft Chapter 6 with placeholders for Delta v5 metrics and final render frames.
+- Use one main scenario analysis: corrected baseline vs the final winner model.
+- Use no-temporal as the temporal-module-off ablation and repeat-current as the
+  real-history usage diagnostic.
 
 Check jobs and GPU hours:
 

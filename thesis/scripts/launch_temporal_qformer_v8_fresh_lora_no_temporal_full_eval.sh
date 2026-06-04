@@ -1,26 +1,27 @@
 #!/bin/bash
 set -euo pipefail
 
-# Launch a full Bench2Drive evaluation for the completed Q-former v6 run.
-# Run this from an interactive tmux session, not with sbatch. The script starts
-# start_eval_simlingo.py, which then submits per-route Slurm jobs.
+# Launch a full Bench2Drive evaluation for the completed no-temporal v8
+# fresh-LoRA ablation. Run this from an interactive tmux session, not with
+# sbatch. The script starts start_eval_simlingo.py, which then submits
+# per-route Slurm jobs.
 
 export PROJECT_ID="${PROJECT_ID:-berzelius-2023-154}"
 export USERNAME="${USERNAME:-${USER:-}}"
 export BASE_DIR="${BASE_DIR:-/proj/${PROJECT_ID}/users/${USERNAME}}"
 export REPO_DIR="${REPO_DIR:-${BASE_DIR}/simlingo-thesis}"
 
-export EVAL_RUN_NAME="simlingo_temporal_qformer_v6_epoch013_full"
+export EVAL_RUN_NAME="simlingo_temporal_qformer_v8_fresh_lora_no_temporal_full"
 export EVAL_AGENT_NAME="${EVAL_RUN_NAME}"
 
-RUN_DIR="${REPO_DIR}/outputs/2026_05_15_14_47_37_temporal_qformer_v6_8gpu"
-EPOCH="epoch=013"
-CKPT_DIR="${RUN_DIR}/checkpoints/${EPOCH}.ckpt"
-FP32_DIR="${RUN_DIR}/checkpoints/${EPOCH}_fp32"
+RUN_DIR="${REPO_DIR}/outputs/2026_05_29_04_52_41_temporal_qformer_v8_fresh_lora_no_temporal_8gpu"
+CKPT_NAME="final"
+CKPT_DIR="${RUN_DIR}/checkpoints/${CKPT_NAME}.ckpt"
+FP32_DIR="${RUN_DIR}/checkpoints/${CKPT_NAME}_fp32"
 export MODEL_CKPT="${FP32_DIR}/pytorch_model.bin"
 
 source "${REPO_DIR}/thesis/env.sh"
-export EVAL_RUN_NAME="simlingo_temporal_qformer_v6_epoch013_full"
+export EVAL_RUN_NAME="simlingo_temporal_qformer_v8_fresh_lora_no_temporal_full"
 export EVAL_AGENT_NAME="${EVAL_RUN_NAME}"
 export BENCH2DRIVE_ROOT="${EVAL_OUT_ROOT}/${EVAL_AGENT_NAME}/bench2drive"
 cd "${REPO_DIR}"

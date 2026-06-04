@@ -1,0 +1,337 @@
+BENCH2DRIVE SCENARIO COMPARISON
+Baseline model:  baseline_evalfix
+Compared model: qformer_v8_fresh
+Split:           /proj/berzelius-2023-154/users/x_hugaf/simlingo-thesis/leaderboard/data/bench2drive_split
+Routes:          220
+Seeds:           1, 2, 3
+Change convention: compared-model failures minus baseline failures; negative means the compared model improved.
+
+1. OVERALL FAILURE SUMMARY
+metric                           | baseline   | model      | change  
+---------------------------------------------------------------------
+failed route-seed attempts       | 208        | 199        | -9      
+routes failed in >=1 seed        | 96         | 85         | -11     
+routes failed in all 3 seeds     | 46         | 48         | 2       
+missing/incomplete attempts      | 2          | 0          | -2      
+expected attempts                | 660        | 660        | 0       
+
+2. SCENARIO FAMILY SUMMARY
+family                             | baseline           | baseline % | model              | model %     | change  | baseline main cause                      | model main cause                          
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+gap_acceptance_junction_flow       | 62/120 (2 missing) |  51.7%     | 75/120             |  62.5%      | +13     | collisions_vehicle (57)                  | collisions_vehicle (65)                   
+pedestrian_bicycle_parking         | 7/75               |   9.3%     | 18/75              |  24.0%      | +11     | scenario_timeouts (4)                    | collisions_vehicle (5)                    
+route_following_control            | 20/90              |  22.2%     | 17/90              |  18.9%      | -3      | collisions_vehicle (8)                   | Failed - Agent deviated from the route (6)
+traffic_rules_priority             | 34/90              |  37.8%     | 29/90              |  32.2%      | -5      | yield_emergency_vehicle_infractions (15) | yield_emergency_vehicle_infractions (14)  
+actor_flow_merging_lane_change     | 36/120             |  30.0%     | 24/120             |  20.0%      | -12     | collisions_vehicle (21)                  | Failed - Agent timed out (7)              
+obstacles_static_hazards           | 49/165             |  29.7%     | 36/165             |  21.8%      | -13     | collisions_vehicle (39)                  | collisions_vehicle (26)                   
+
+3. ROUTE-LEVEL TRANSITIONS
+transition                   | routes  
+---------------------------------------
+fixed                        | 27      
+improved_but_not_fixed       | 11      
+regressed                    | 16      
+worse_but_both_fail          | 19      
+failed_both_same_count       | 38      
+has_missing_attempt          | 1       
+passed_both                  | 108     
+
+4. BIGGEST SCENARIO IMPROVEMENTS
+scenario                                     | baseline           | baseline % | model              | model %     | change  | baseline cause                             | model cause                               
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ParkedObstacle_1                             | 10/15              |  66.7%     | 3/15               |  20.0%      | -7      | collisions_vehicle (10)                    | collisions_vehicle (3)                    
+BlockedIntersection_1                        | 7/15               |  46.7%     | 2/15               |  13.3%      | -5      | collisions_vehicle (6)                     | stop_infraction (1)                       
+SequentialLaneChange_1                       | 6/15               |  40.0%     | 1/15               |   6.7%      | -5      | collisions_vehicle (6)                     | collisions_vehicle (1)                    
+T_Junction_1                                 | 5/15               |  33.3%     | 1/15               |   6.7%      | -4      | collisions_vehicle (2)                     | Failed - Agent deviated from the route (1)
+AccidentTwoWays_1                            | 11/15              |  73.3%     | 8/15               |  53.3%      | -3      | collisions_vehicle (6)                     | collisions_vehicle (4)                    
+ConstructionObstacle_1                       | 7/15               |  46.7%     | 4/15               |  26.7%      | -3      | collisions_vehicle (4)                     | collisions_vehicle (4)                    
+InterurbanActorFlow_1                        | 11/15              |  73.3%     | 8/15               |  53.3%      | -3      | Failed - Agent deviated from the route (3) | Failed - Agent got blocked (4)            
+MergerIntoSlowTraffic_1                      | 8/15               |  53.3%     | 5/15               |  33.3%      | -3      | collisions_vehicle (8)                     | collisions_vehicle (2)                    
+VanillaNonSignalizedTurnEncounterStopsign_1  | 3/15               |  20.0%     | 0/15               |   0.0%      | -3      | Failed - Agent timed out (1)               | -                                         
+MergerIntoSlowTrafficV2_1                    | 6/15               |  40.0%     | 4/15               |  26.7%      | -2      | collisions_vehicle (3)                     | collisions_vehicle (2)                    
+OppositeVehicleRunningRedLight_1             | 5/15               |  33.3%     | 3/15               |  20.0%      | -2      | stop_infraction (3)                        | Failed - Agent deviated from the route (2)
+SignalizedJunctionLeftTurn_1                 | 12/15              |  80.0%     | 10/15              |  66.7%      | -2      | collisions_vehicle (12)                    | collisions_vehicle (7)                    
+
+5. BIGGEST SCENARIO REGRESSIONS
+scenario                                     | baseline           | baseline % | model              | model %     | change  | baseline cause                 | model cause                   
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+NonSignalizedJunctionLeftTurn_1              | 6/15               |  40.0%     | 10/15              |  66.7%      | +4      | collisions_vehicle (6)         | collisions_vehicle (9)        
+ParkingCrossingPedestrian_1                  | 0/15               |   0.0%     | 4/15               |  26.7%      | +4      | -                              | Failed - Agent timed out (3)  
+SignalizedJunctionLeftTurnEnterFlow_1        | 8/15               |  53.3%     | 12/15              |  80.0%      | +4      | collisions_vehicle (8)         | collisions_vehicle (12)       
+ParkingExit_1                                | 4/15               |  26.7%     | 7/15               |  46.7%      | +3      | scenario_timeouts (4)          | collisions_vehicle (4)        
+Accident_1                                   | 4/15               |  26.7%     | 6/15               |  40.0%      | +2      | collisions_vehicle (4)         | collisions_vehicle (6)        
+NonSignalizedJunctionLeftTurnEnterFlow_1     | 9/15               |  60.0%     | 11/15              |  73.3%      | +2      | collisions_vehicle (5)         | collisions_vehicle (9)        
+OppositeVehicleTakingPriority_1              | 3/15               |  20.0%     | 5/15               |  33.3%      | +2      | collisions_vehicle (3)         | collisions_vehicle (5)        
+PedestrianCrossing_1                         | 2/15               |  13.3%     | 4/15               |  26.7%      | +2      | stop_infraction (2)            | stop_infraction (3)           
+SignalizedJunctionRightTurn_1                | 7/15               |  46.7%     | 9/15               |  60.0%      | +2      | collisions_vehicle (7)         | collisions_vehicle (8)        
+VehicleOpensDoorTwoWays_1                    | 2/15               |  13.3%     | 4/15               |  26.7%      | +2      | collisions_vehicle (2)         | collisions_vehicle (4)        
+VehicleTurningRoutePedestrian_1              | 1/15               |   6.7%     | 3/15               |  20.0%      | +2      | collisions_pedestrian (1)      | collisions_pedestrian (3)     
+DynamicObjectCrossing_1                      | 0/15               |   0.0%     | 1/15               |   6.7%      | +1      | -                              | collisions_pedestrian (1)     
+
+6. UNCHANGED HARD SCENARIOS
+scenario                                     | baseline           | baseline % | model              | model %     | baseline cause                 | model cause                               
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+HighwayExit_1                                | 13/15              |  86.7%     | 13/15              |  86.7%      | collisions_vehicle (5)         | Failed - Agent deviated from the route (5)
+EnterActorFlow_1                             | 12/15 (2 missing)  |  80.0%     | 12/15              |  80.0%      | collisions_vehicle (11)        | collisions_vehicle (9)                    
+
+7. RENDER CANDIDATES
+fixed: baseline fails, compared model succeeds
+route    | res   | scenario                                     | family                             | baseline | model     | baseline cause                 | model cause                   
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+23910    | 137   | InterurbanActorFlow_1                        | actor_flow_merging_lane_change     | 1/3      | 0/3       | outside_route_lanes (1)        | -                             
+24098    | 144   | InterurbanActorFlow_1                        | actor_flow_merging_lane_change     | 1/3      | 0/3       | collisions_vehicle (1)         | -                             
+23771    | 135   | MergerIntoSlowTrafficV2_1                    | actor_flow_merging_lane_change     | 1/3      | 0/3       | collisions_vehicle (1)         | -                             
+2273     | 022   | MergerIntoSlowTraffic_1                      | actor_flow_merging_lane_change     | 3/3      | 0/3       | collisions_vehicle (3)         | -                             
+17569    | 118   | SequentialLaneChange_1                       | actor_flow_merging_lane_change     | 3/3      | 0/3       | collisions_vehicle (3)         | -                             
+2115     | 013   | NonSignalizedJunctionRightTurn_1             | gap_acceptance_junction_flow       | 2/3      | 0/3       | collisions_vehicle (2)         | -                             
+3676     | 086   | NonSignalizedJunctionRightTurn_1             | gap_acceptance_junction_flow       | 2/3      | 0/3       | collisions_vehicle (2)         | -                             
+1852     | 006   | AccidentTwoWays_1                            | obstacles_static_hazards           | 1/3      | 0/3       | collisions_vehicle (1)         | -                             
+2643     | 036   | AccidentTwoWays_1                            | obstacles_static_hazards           | 1/3      | 0/3       | collisions_vehicle (1)         | -                             
+24240    | 148   | Accident_1                                   | obstacles_static_hazards           | 1/3      | 0/3       | collisions_vehicle (1)         | -                             
+2215     | 021   | BlockedIntersection_1                        | obstacles_static_hazards           | 1/3      | 0/3       | red_light (1)                  | -                             
+27532    | 204   | BlockedIntersection_1                        | obstacles_static_hazards           | 3/3      | 0/3       | collisions_vehicle (3)         | -                             
+
+regressed: baseline succeeds, compared model fails
+route    | res   | scenario                                     | family                             | baseline | model     | baseline cause                 | model cause                   
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+28210    | 214   | NonSignalizedJunctionLeftTurnEnterFlow_1     | gap_acceptance_junction_flow       | 0/3      | 1/3       | -                              | collisions_vehicle (1)        
+3670     | 085   | NonSignalizedJunctionRightTurn_1             | gap_acceptance_junction_flow       | 0/3      | 3/3       | -                              | collisions_vehicle (3)        
+2129     | 015   | OppositeVehicleTakingPriority_1              | gap_acceptance_junction_flow       | 0/3      | 2/3       | -                              | collisions_vehicle (2)        
+2050     | 008   | SignalizedJunctionRightTurn_1                | gap_acceptance_junction_flow       | 0/3      | 2/3       | -                              | collisions_vehicle (2)        
+2534     | 032   | Accident_1                                   | obstacles_static_hazards           | 0/3      | 3/3       | -                              | collisions_vehicle (3)        
+2204     | 020   | BlockedIntersection_1                        | obstacles_static_hazards           | 0/3      | 1/3       | -                              | stop_infraction (1)           
+25424    | 170   | ConstructionObstacleTwoWays_1                | obstacles_static_hazards           | 0/3      | 1/3       | -                              | collisions_layout (1)         
+24785    | 160   | ConstructionObstacle_1                       | obstacles_static_hazards           | 0/3      | 1/3       | -                              | collisions_vehicle (1)        
+24224    | 147   | DynamicObjectCrossing_1                      | obstacles_static_hazards           | 0/3      | 1/3       | -                              | collisions_pedestrian (1)     
+25955    | 180   | HazardAtSideLaneTwoWays_1                    | obstacles_static_hazards           | 0/3      | 1/3       | -                              | collisions_vehicle (1)        
+18252    | 123   | ParkingCrossingPedestrian_1                  | pedestrian_bicycle_parking         | 0/3      | 1/3       | -                              | collisions_pedestrian (1)     
+24294    | 151   | ParkingCrossingPedestrian_1                  | pedestrian_bicycle_parking         | 0/3      | 3/3       | -                              | Failed - Agent timed out (3)  
+
+worse_but_both_fail: both fail, compared model fails in more seeds
+route    | res   | scenario                                     | family                             | baseline | model     | baseline cause                 | model cause                   
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+2709     | 039   | StaticCutIn_1                                | actor_flow_merging_lane_change     | 2/3      | 3/3       | collisions_vehicle (2)         | Failed - Agent timed out (3)  
+28219    | 215   | NonSignalizedJunctionLeftTurnEnterFlow_1     | gap_acceptance_junction_flow       | 1/3      | 2/3       | collisions_vehicle (1)         | collisions_vehicle (1)        
+2084     | 010   | NonSignalizedJunctionLeftTurn_1              | gap_acceptance_junction_flow       | 1/3      | 3/3       | collisions_vehicle (1)         | collisions_vehicle (3)        
+2091     | 012   | NonSignalizedJunctionLeftTurn_1              | gap_acceptance_junction_flow       | 2/3      | 3/3       | collisions_vehicle (2)         | collisions_vehicle (2)        
+26990    | 198   | NonSignalizedJunctionLeftTurn_1              | gap_acceptance_junction_flow       | 2/3      | 3/3       | collisions_vehicle (2)         | collisions_vehicle (3)        
+3666     | 084   | NonSignalizedJunctionRightTurn_1             | gap_acceptance_junction_flow       | 1/3      | 3/3       | collisions_vehicle (1)         | collisions_vehicle (3)        
+28241    | 217   | SignalizedJunctionLeftTurnEnterFlow_1        | gap_acceptance_junction_flow       | 2/3      | 3/3       | collisions_vehicle (2)         | collisions_vehicle (3)        
+28243    | 218   | SignalizedJunctionLeftTurnEnterFlow_1        | gap_acceptance_junction_flow       | 1/3      | 3/3       | collisions_vehicle (1)         | collisions_vehicle (3)        
+28330    | 219   | SignalizedJunctionLeftTurnEnterFlow_1        | gap_acceptance_junction_flow       | 2/3      | 3/3       | collisions_vehicle (2)         | collisions_vehicle (3)        
+2539     | 033   | Accident_1                                   | obstacles_static_hazards           | 1/3      | 2/3       | collisions_vehicle (1)         | collisions_vehicle (2)        
+1790     | 002   | HazardAtSideLane_1                           | obstacles_static_hazards           | 2/3      | 3/3       | collisions_vehicle (2)         | collisions_vehicle (3)        
+24757    | 156   | ParkedObstacle_1                             | obstacles_static_hazards           | 1/3      | 2/3       | collisions_vehicle (1)         | collisions_vehicle (2)        
+
+failed_both_same_count: persistent hard cases
+route    | res   | scenario                                     | family                             | baseline | model     | baseline cause                             | model cause                               
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+23901    | 136   | InterurbanActorFlow_1                        | actor_flow_merging_lane_change     | 3/3      | 3/3       | Failed - Agent got blocked (2)             | Failed - Agent got blocked (3)            
+23930    | 139   | InterurbanActorFlow_1                        | actor_flow_merging_lane_change     | 3/3      | 3/3       | Failed - Agent deviated from the route (2) | Failed - Agent deviated from the route (2)
+24092    | 143   | MergerIntoSlowTrafficV2_1                    | actor_flow_merging_lane_change     | 2/3      | 2/3       | collisions_vehicle (2)                     | collisions_vehicle (2)                    
+3785     | 094   | MergerIntoSlowTraffic_1                      | actor_flow_merging_lane_change     | 2/3      | 2/3       | collisions_vehicle (2)                     | collisions_vehicle (2)                    
+3800     | 095   | MergerIntoSlowTraffic_1                      | actor_flow_merging_lane_change     | 3/3      | 3/3       | collisions_vehicle (3)                     | outside_route_lanes (2)                   
+25358    | 166   | StaticCutIn_1                                | actor_flow_merging_lane_change     | 3/3      | 3/3       | Failed - Agent timed out (2)               | Failed - Agent timed out (3)              
+2201     | 019   | EnterActorFlow_1                             | gap_acceptance_junction_flow       | 3/3      | 3/3       | collisions_vehicle (3)                     | collisions_vehicle (3)                    
+3749     | 093   | EnterActorFlow_1                             | gap_acceptance_junction_flow       | 3/3      | 3/3       | collisions_vehicle (3)                     | scenario_timeouts (2)                     
+11755    | 112   | EnterActorFlow_1                             | gap_acceptance_junction_flow       | 3/3      | 3/3       | collisions_vehicle (3)                     | collisions_vehicle (2)                    
+27506    | 201   | EnterActorFlow_1                             | gap_acceptance_junction_flow       | 2/3      | 2/3       | collisions_vehicle (2)                     | collisions_vehicle (2)                    
+28087    | 208   | NonSignalizedJunctionLeftTurnEnterFlow_1     | gap_acceptance_junction_flow       | 3/3      | 3/3       | stop_infraction (3)                        | collisions_vehicle (3)                    
+28093    | 209   | NonSignalizedJunctionLeftTurnEnterFlow_1     | gap_acceptance_junction_flow       | 2/3      | 2/3       | stop_infraction (1)                        | collisions_vehicle (2)                    
+
+8. TEST SPLIT AND SCENARIO FAMILY DEFINITIONS
+The Bench2Drive split used here has 220 routes: 44 scenario types, 5 routes per type, evaluated with 3 seeds.
+Scenario families are thesis-analysis groupings, not official Bench2Drive metrics.
+family                             | routes | attempts | scenario types                                                                                                                                                                                                                                                    
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+actor_flow_merging_lane_change     | 40     | 120      | HighwayCutIn_1, InterurbanActorFlow_1, InterurbanAdvancedActorFlow_1, MergerIntoSlowTrafficV2_1, MergerIntoSlowTraffic_1, ParkingCutIn_1, SequentialLaneChange_1, StaticCutIn_1                                                                                   
+gap_acceptance_junction_flow       | 40     | 120      | EnterActorFlow_1, NonSignalizedJunctionLeftTurnEnterFlow_1, NonSignalizedJunctionLeftTurn_1, NonSignalizedJunctionRightTurn_1, OppositeVehicleTakingPriority_1, SignalizedJunctionLeftTurnEnterFlow_1, SignalizedJunctionLeftTurn_1, SignalizedJunctionRightTurn_1
+obstacles_static_hazards           | 55     | 165      | AccidentTwoWays_1, Accident_1, BlockedIntersection_1, ConstructionObstacleTwoWays_1, ConstructionObstacle_1, DynamicObjectCrossing_1, HazardAtSideLaneTwoWays_1, HazardAtSideLane_1, ParkedObstacleTwoWays_1, ParkedObstacle_1, VehicleOpensDoorTwoWays_1         
+pedestrian_bicycle_parking         | 25     | 75       | CrossingBicycleFlow_1, ParkingCrossingPedestrian_1, ParkingExit_1, PedestrianCrossing_1, VehicleTurningRoutePedestrian_1                                                                                                                                          
+route_following_control            | 30     | 90       | ControlLoss_1, HardBreakRoute_1, HighwayExit_1, InvadingTurn_1, T_Junction_1, VehicleTurningRoute_1                                                                                                                                                               
+traffic_rules_priority             | 30     | 90       | OppositeVehicleRunningRedLight_1, VanillaNonSignalizedTurnEncounterStopsign_1, VanillaNonSignalizedTurn_1, VanillaSignalizedTurnEncounterGreenLight_1, VanillaSignalizedTurnEncounterRedLight_1, YieldToEmergencyVehicle_1                                        
+
+9. HARDEST SCENARIOS PER MODEL
+HARDEST SCENARIOS: baseline_evalfix
+scenario                                     | failures             | fail %  | main cause                                
+--------------------------------------------------------------------------------------------------------------------------
+YieldToEmergencyVehicle_1                    | 15/15                | 100.0%  | yield_emergency_vehicle_infractions (15)  
+HighwayExit_1                                | 13/15                |  86.7%  | collisions_vehicle (5)                    
+SignalizedJunctionLeftTurn_1                 | 12/15                |  80.0%  | collisions_vehicle (12)                   
+EnterActorFlow_1                             | 12/15 (2 missing)    |  80.0%  | collisions_vehicle (11)                   
+AccidentTwoWays_1                            | 11/15                |  73.3%  | collisions_vehicle (6)                    
+InterurbanActorFlow_1                        | 11/15                |  73.3%  | Failed - Agent deviated from the route (3)
+ParkedObstacle_1                             | 10/15                |  66.7%  | collisions_vehicle (10)                   
+NonSignalizedJunctionLeftTurnEnterFlow_1     | 9/15                 |  60.0%  | collisions_vehicle (5)                    
+SignalizedJunctionLeftTurnEnterFlow_1        | 8/15                 |  53.3%  | collisions_vehicle (8)                    
+MergerIntoSlowTraffic_1                      | 8/15                 |  53.3%  | collisions_vehicle (8)                    
+VanillaSignalizedTurnEncounterRedLight_1     | 8/15                 |  53.3%  | red_light (8)                             
+SignalizedJunctionRightTurn_1                | 7/15                 |  46.7%  | collisions_vehicle (7)                    
+
+HARDEST SCENARIOS: qformer_v8_fresh
+scenario                                     | failures             | fail %  | main cause                                
+--------------------------------------------------------------------------------------------------------------------------
+YieldToEmergencyVehicle_1                    | 14/15                |  93.3%  | yield_emergency_vehicle_infractions (14)  
+HighwayExit_1                                | 13/15                |  86.7%  | Failed - Agent deviated from the route (5)
+EnterActorFlow_1                             | 12/15                |  80.0%  | collisions_vehicle (9)                    
+SignalizedJunctionLeftTurnEnterFlow_1        | 12/15                |  80.0%  | collisions_vehicle (12)                   
+NonSignalizedJunctionLeftTurnEnterFlow_1     | 11/15                |  73.3%  | collisions_vehicle (9)                    
+NonSignalizedJunctionLeftTurn_1              | 10/15                |  66.7%  | collisions_vehicle (9)                    
+SignalizedJunctionLeftTurn_1                 | 10/15                |  66.7%  | collisions_vehicle (7)                    
+SignalizedJunctionRightTurn_1                | 9/15                 |  60.0%  | collisions_vehicle (8)                    
+VanillaSignalizedTurnEncounterRedLight_1     | 9/15                 |  60.0%  | red_light (9)                             
+AccidentTwoWays_1                            | 8/15                 |  53.3%  | collisions_vehicle (4)                    
+InterurbanActorFlow_1                        | 8/15                 |  53.3%  | Failed - Agent got blocked (4)            
+ParkingExit_1                                | 7/15                 |  46.7%  | collisions_vehicle (4)                    
+
+10. ALL 44 SCENARIO TYPES
+scenario                                     | baseline           | baseline % | model              | model %     | change  | baseline cause                             | model cause                               
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+AccidentTwoWays_1                            | 11/15              |  73.3%     | 8/15               |  53.3%      | -3      | collisions_vehicle (6)                     | collisions_vehicle (4)                    
+Accident_1                                   | 4/15               |  26.7%     | 6/15               |  40.0%      | +2      | collisions_vehicle (4)                     | collisions_vehicle (6)                    
+BlockedIntersection_1                        | 7/15               |  46.7%     | 2/15               |  13.3%      | -5      | collisions_vehicle (6)                     | stop_infraction (1)                       
+ConstructionObstacleTwoWays_1                | 3/15               |  20.0%     | 3/15               |  20.0%      | +0      | collisions_vehicle (2)                     | collisions_layout (3)                     
+ConstructionObstacle_1                       | 7/15               |  46.7%     | 4/15               |  26.7%      | -3      | collisions_vehicle (4)                     | collisions_vehicle (4)                    
+ControlLoss_1                                | 0/15               |   0.0%     | 0/15               |   0.0%      | +0      | -                                          | -                                         
+CrossingBicycleFlow_1                        | 0/15               |   0.0%     | 0/15               |   0.0%      | +0      | -                                          | -                                         
+DynamicObjectCrossing_1                      | 0/15               |   0.0%     | 1/15               |   6.7%      | +1      | -                                          | collisions_pedestrian (1)                 
+EnterActorFlow_1                             | 12/15 (2 missing)  |  80.0%     | 12/15              |  80.0%      | +0      | collisions_vehicle (11)                    | collisions_vehicle (9)                    
+HardBreakRoute_1                             | 0/15               |   0.0%     | 0/15               |   0.0%      | +0      | -                                          | -                                         
+HazardAtSideLaneTwoWays_1                    | 0/15               |   0.0%     | 1/15               |   6.7%      | +1      | -                                          | collisions_vehicle (1)                    
+HazardAtSideLane_1                           | 5/15               |  33.3%     | 4/15               |  26.7%      | -1      | collisions_vehicle (5)                     | collisions_vehicle (3)                    
+HighwayCutIn_1                               | 0/15               |   0.0%     | 0/15               |   0.0%      | +0      | -                                          | -                                         
+HighwayExit_1                                | 13/15              |  86.7%     | 13/15              |  86.7%      | +0      | collisions_vehicle (5)                     | Failed - Agent deviated from the route (5)
+InterurbanActorFlow_1                        | 11/15              |  73.3%     | 8/15               |  53.3%      | -3      | Failed - Agent deviated from the route (3) | Failed - Agent got blocked (4)            
+InterurbanAdvancedActorFlow_1                | 0/15               |   0.0%     | 0/15               |   0.0%      | +0      | -                                          | -                                         
+InvadingTurn_1                               | 0/15               |   0.0%     | 0/15               |   0.0%      | +0      | -                                          | -                                         
+MergerIntoSlowTrafficV2_1                    | 6/15               |  40.0%     | 4/15               |  26.7%      | -2      | collisions_vehicle (3)                     | collisions_vehicle (2)                    
+MergerIntoSlowTraffic_1                      | 8/15               |  53.3%     | 5/15               |  33.3%      | -3      | collisions_vehicle (8)                     | collisions_vehicle (2)                    
+NonSignalizedJunctionLeftTurnEnterFlow_1     | 9/15               |  60.0%     | 11/15              |  73.3%      | +2      | collisions_vehicle (5)                     | collisions_vehicle (9)                    
+NonSignalizedJunctionLeftTurn_1              | 6/15               |  40.0%     | 10/15              |  66.7%      | +4      | collisions_vehicle (6)                     | collisions_vehicle (9)                    
+NonSignalizedJunctionRightTurn_1             | 5/15               |  33.3%     | 6/15               |  40.0%      | +1      | collisions_vehicle (5)                     | collisions_vehicle (6)                    
+OppositeVehicleRunningRedLight_1             | 5/15               |  33.3%     | 3/15               |  20.0%      | -2      | stop_infraction (3)                        | Failed - Agent deviated from the route (2)
+OppositeVehicleTakingPriority_1              | 3/15               |  20.0%     | 5/15               |  33.3%      | +2      | collisions_vehicle (3)                     | collisions_vehicle (5)                    
+ParkedObstacleTwoWays_1                      | 0/15               |   0.0%     | 0/15               |   0.0%      | +0      | -                                          | -                                         
+ParkedObstacle_1                             | 10/15              |  66.7%     | 3/15               |  20.0%      | -7      | collisions_vehicle (10)                    | collisions_vehicle (3)                    
+ParkingCrossingPedestrian_1                  | 0/15               |   0.0%     | 4/15               |  26.7%      | +4      | -                                          | Failed - Agent timed out (3)              
+ParkingCutIn_1                               | 0/15               |   0.0%     | 0/15               |   0.0%      | +0      | -                                          | -                                         
+ParkingExit_1                                | 4/15               |  26.7%     | 7/15               |  46.7%      | +3      | scenario_timeouts (4)                      | collisions_vehicle (4)                    
+PedestrianCrossing_1                         | 2/15               |  13.3%     | 4/15               |  26.7%      | +2      | stop_infraction (2)                        | stop_infraction (3)                       
+SequentialLaneChange_1                       | 6/15               |  40.0%     | 1/15               |   6.7%      | -5      | collisions_vehicle (6)                     | collisions_vehicle (1)                    
+SignalizedJunctionLeftTurnEnterFlow_1        | 8/15               |  53.3%     | 12/15              |  80.0%      | +4      | collisions_vehicle (8)                     | collisions_vehicle (12)                   
+SignalizedJunctionLeftTurn_1                 | 12/15              |  80.0%     | 10/15              |  66.7%      | -2      | collisions_vehicle (12)                    | collisions_vehicle (7)                    
+SignalizedJunctionRightTurn_1                | 7/15               |  46.7%     | 9/15               |  60.0%      | +2      | collisions_vehicle (7)                     | collisions_vehicle (8)                    
+StaticCutIn_1                                | 5/15               |  33.3%     | 6/15               |  40.0%      | +1      | collisions_vehicle (3)                     | Failed - Agent timed out (6)              
+T_Junction_1                                 | 5/15               |  33.3%     | 1/15               |   6.7%      | -4      | collisions_vehicle (2)                     | Failed - Agent deviated from the route (1)
+VanillaNonSignalizedTurnEncounterStopsign_1  | 3/15               |  20.0%     | 0/15               |   0.0%      | -3      | Failed - Agent timed out (1)               | -                                         
+VanillaNonSignalizedTurn_1                   | 0/15               |   0.0%     | 0/15               |   0.0%      | +0      | -                                          | -                                         
+VanillaSignalizedTurnEncounterGreenLight_1   | 3/15               |  20.0%     | 3/15               |  20.0%      | +0      | outside_route_lanes (3)                    | outside_route_lanes (3)                   
+VanillaSignalizedTurnEncounterRedLight_1     | 8/15               |  53.3%     | 9/15               |  60.0%      | +1      | red_light (8)                              | red_light (9)                             
+VehicleOpensDoorTwoWays_1                    | 2/15               |  13.3%     | 4/15               |  26.7%      | +2      | collisions_vehicle (2)                     | collisions_vehicle (4)                    
+VehicleTurningRoutePedestrian_1              | 1/15               |   6.7%     | 3/15               |  20.0%      | +2      | collisions_pedestrian (1)                  | collisions_pedestrian (3)                 
+VehicleTurningRoute_1                        | 2/15               |  13.3%     | 3/15               |  20.0%      | +1      | collisions_vehicle (1)                     | collisions_vehicle (2)                    
+YieldToEmergencyVehicle_1                    | 15/15              | 100.0%     | 14/15              |  93.3%      | -1      | yield_emergency_vehicle_infractions (15)   | yield_emergency_vehicle_infractions (14)  
+
+11. SYSTEMATIC ROUTE FAILURES PER MODEL
+SYSTEMATIC ROUTE FAILURES: baseline_evalfix
+route    | res   | scenario                                     | family                             | main cause                                
+-------------------------------------------------------------------------------------------------------------------------------------------------
+25845    | 172   | AccidentTwoWays_1                            | obstacles_static_hazards           | outside_route_lanes (1)                   
+25857    | 174   | AccidentTwoWays_1                            | obstacles_static_hazards           | scenario_timeouts (2)                     
+3410     | 070   | AccidentTwoWays_1                            | obstacles_static_hazards           | collisions_vehicle (3)                    
+27494    | 200   | BlockedIntersection_1                        | obstacles_static_hazards           | collisions_vehicle (3)                    
+27532    | 204   | BlockedIntersection_1                        | obstacles_static_hazards           | collisions_vehicle (3)                    
+1825     | 004   | ConstructionObstacleTwoWays_1                | obstacles_static_hazards           | collisions_vehicle (2)                    
+2509     | 030   | ConstructionObstacle_1                       | obstacles_static_hazards           | collisions_vehicle (2)                    
+11755    | 112   | EnterActorFlow_1                             | gap_acceptance_junction_flow       | collisions_vehicle (3)                    
+2201     | 019   | EnterActorFlow_1                             | gap_acceptance_junction_flow       | collisions_vehicle (3)                    
+3749     | 093   | EnterActorFlow_1                             | gap_acceptance_junction_flow       | collisions_vehicle (3)                    
+23658    | 128   | HighwayExit_1                                | route_following_control            | Failed - Agent deviated from the route (2)
+23670    | 130   | HighwayExit_1                                | route_following_control            | Failed - Agent got blocked (2)            
+23687    | 131   | HighwayExit_1                                | route_following_control            | collisions_vehicle (3)                    
+24041    | 140   | HighwayExit_1                                | route_following_control            | Failed - Agent got blocked (2)            
+23901    | 136   | InterurbanActorFlow_1                        | actor_flow_merging_lane_change     | Failed - Agent got blocked (2)            
+23918    | 138   | InterurbanActorFlow_1                        | actor_flow_merging_lane_change     | collisions_layout (1)                     
+23930    | 139   | InterurbanActorFlow_1                        | actor_flow_merging_lane_change     | Failed - Agent deviated from the route (2)
+26408    | 189   | MergerIntoSlowTrafficV2_1                    | actor_flow_merging_lane_change     | Failed - Agent deviated from the route (3)
+2273     | 022   | MergerIntoSlowTraffic_1                      | actor_flow_merging_lane_change     | collisions_vehicle (3)                    
+3800     | 095   | MergerIntoSlowTraffic_1                      | actor_flow_merging_lane_change     | collisions_vehicle (3)                    
+28087    | 208   | NonSignalizedJunctionLeftTurnEnterFlow_1     | gap_acceptance_junction_flow       | stop_infraction (3)                       
+28229    | 216   | NonSignalizedJunctionLeftTurnEnterFlow_1     | gap_acceptance_junction_flow       | collisions_vehicle (3)                    
+26944    | 194   | OppositeVehicleRunningRedLight_1             | traffic_rules_priority             | stop_infraction (3)                       
+2143     | 016   | OppositeVehicleTakingPriority_1              | gap_acceptance_junction_flow       | collisions_vehicle (3)                    
+25318    | 165   | ParkedObstacle_1                             | obstacles_static_hazards           | collisions_vehicle (3)                    
+25383    | 169   | ParkedObstacle_1                             | obstacles_static_hazards           | collisions_vehicle (3)                    
+26393    | 183   | ParkingExit_1                                | pedestrian_bicycle_parking         | scenario_timeouts (3)                     
+17569    | 118   | SequentialLaneChange_1                       | actor_flow_merging_lane_change     | collisions_vehicle (3)                    
+17655    | 121   | SequentialLaneChange_1                       | actor_flow_merging_lane_change     | collisions_vehicle (3)                    
+28099    | 210   | SignalizedJunctionLeftTurnEnterFlow_1        | gap_acceptance_junction_flow       | collisions_vehicle (3)                    
+3936     | 103   | SignalizedJunctionLeftTurn_1                 | gap_acceptance_junction_flow       | collisions_vehicle (3)                    
+4183     | 104   | SignalizedJunctionLeftTurn_1                 | gap_acceptance_junction_flow       | collisions_vehicle (3)                    
+4468     | 105   | SignalizedJunctionLeftTurn_1                 | gap_acceptance_junction_flow       | collisions_vehicle (3)                    
+4683     | 107   | SignalizedJunctionLeftTurn_1                 | gap_acceptance_junction_flow       | collisions_vehicle (3)                    
+26966    | 197   | SignalizedJunctionRightTurn_1                | gap_acceptance_junction_flow       | collisions_vehicle (3)                    
+27018    | 199   | SignalizedJunctionRightTurn_1                | gap_acceptance_junction_flow       | collisions_vehicle (3)                    
+25358    | 166   | StaticCutIn_1                                | actor_flow_merging_lane_change     | Failed - Agent timed out (2)              
+28035    | 206   | T_Junction_1                                 | route_following_control            | red_light (2)                             
+25968    | 181   | VanillaSignalizedTurnEncounterGreenLight_1   | traffic_rules_priority             | outside_route_lanes (3)                   
+3144     | 059   | VanillaSignalizedTurnEncounterRedLight_1     | traffic_rules_priority             | red_light (3)                             
+3865     | 097   | VanillaSignalizedTurnEncounterRedLight_1     | traffic_rules_priority             | red_light (3)                             
+25378    | 167   | YieldToEmergencyVehicle_1                    | traffic_rules_priority             | yield_emergency_vehicle_infractions (3)   
+3364     | 066   | YieldToEmergencyVehicle_1                    | traffic_rules_priority             | yield_emergency_vehicle_infractions (3)   
+3373     | 067   | YieldToEmergencyVehicle_1                    | traffic_rules_priority             | yield_emergency_vehicle_infractions (3)   
+3378     | 068   | YieldToEmergencyVehicle_1                    | traffic_rules_priority             | yield_emergency_vehicle_infractions (3)   
+3380     | 069   | YieldToEmergencyVehicle_1                    | traffic_rules_priority             | yield_emergency_vehicle_infractions (3)   
+
+SYSTEMATIC ROUTE FAILURES: qformer_v8_fresh
+route    | res   | scenario                                     | family                             | main cause                                
+-------------------------------------------------------------------------------------------------------------------------------------------------
+25857    | 174   | AccidentTwoWays_1                            | obstacles_static_hazards           | collisions_vehicle (3)                    
+3410     | 070   | AccidentTwoWays_1                            | obstacles_static_hazards           | scenario_timeouts (2)                     
+2534     | 032   | Accident_1                                   | obstacles_static_hazards           | collisions_vehicle (3)                    
+2509     | 030   | ConstructionObstacle_1                       | obstacles_static_hazards           | collisions_vehicle (3)                    
+11755    | 112   | EnterActorFlow_1                             | gap_acceptance_junction_flow       | collisions_vehicle (2)                    
+2201     | 019   | EnterActorFlow_1                             | gap_acceptance_junction_flow       | collisions_vehicle (3)                    
+3749     | 093   | EnterActorFlow_1                             | gap_acceptance_junction_flow       | scenario_timeouts (2)                     
+1790     | 002   | HazardAtSideLane_1                           | obstacles_static_hazards           | collisions_vehicle (3)                    
+23658    | 128   | HighwayExit_1                                | route_following_control            | Failed - Agent deviated from the route (3)
+23659    | 129   | HighwayExit_1                                | route_following_control            | Failed - Agent deviated from the route (2)
+23670    | 130   | HighwayExit_1                                | route_following_control            | collisions_vehicle (2)                    
+24041    | 140   | HighwayExit_1                                | route_following_control            | Failed - Agent got blocked (2)            
+23901    | 136   | InterurbanActorFlow_1                        | actor_flow_merging_lane_change     | Failed - Agent got blocked (3)            
+23930    | 139   | InterurbanActorFlow_1                        | actor_flow_merging_lane_change     | Failed - Agent deviated from the route (2)
+3800     | 095   | MergerIntoSlowTraffic_1                      | actor_flow_merging_lane_change     | outside_route_lanes (2)                   
+28087    | 208   | NonSignalizedJunctionLeftTurnEnterFlow_1     | gap_acceptance_junction_flow       | collisions_vehicle (3)                    
+28229    | 216   | NonSignalizedJunctionLeftTurnEnterFlow_1     | gap_acceptance_junction_flow       | collisions_vehicle (2)                    
+2084     | 010   | NonSignalizedJunctionLeftTurn_1              | gap_acceptance_junction_flow       | collisions_vehicle (3)                    
+2091     | 012   | NonSignalizedJunctionLeftTurn_1              | gap_acceptance_junction_flow       | collisions_vehicle (2)                    
+26990    | 198   | NonSignalizedJunctionLeftTurn_1              | gap_acceptance_junction_flow       | collisions_vehicle (3)                    
+3666     | 084   | NonSignalizedJunctionRightTurn_1             | gap_acceptance_junction_flow       | collisions_vehicle (3)                    
+3670     | 085   | NonSignalizedJunctionRightTurn_1             | gap_acceptance_junction_flow       | collisions_vehicle (3)                    
+2847     | 044   | OppositeVehicleRunningRedLight_1             | traffic_rules_priority             | Failed - Agent deviated from the route (2)
+2143     | 016   | OppositeVehicleTakingPriority_1              | gap_acceptance_junction_flow       | collisions_vehicle (3)                    
+24294    | 151   | ParkingCrossingPedestrian_1                  | pedestrian_bicycle_parking         | Failed - Agent timed out (3)              
+26393    | 183   | ParkingExit_1                                | pedestrian_bicycle_parking         | scenario_timeouts (3)                     
+3520     | 078   | ParkingExit_1                                | pedestrian_bicycle_parking         | collisions_vehicle (3)                    
+27529    | 203   | PedestrianCrossing_1                         | pedestrian_bicycle_parking         | stop_infraction (3)                       
+28099    | 210   | SignalizedJunctionLeftTurnEnterFlow_1        | gap_acceptance_junction_flow       | collisions_vehicle (3)                    
+28241    | 217   | SignalizedJunctionLeftTurnEnterFlow_1        | gap_acceptance_junction_flow       | collisions_vehicle (3)                    
+28243    | 218   | SignalizedJunctionLeftTurnEnterFlow_1        | gap_acceptance_junction_flow       | collisions_vehicle (3)                    
+28330    | 219   | SignalizedJunctionLeftTurnEnterFlow_1        | gap_acceptance_junction_flow       | collisions_vehicle (3)                    
+3936     | 103   | SignalizedJunctionLeftTurn_1                 | gap_acceptance_junction_flow       | scenario_timeouts (3)                     
+4468     | 105   | SignalizedJunctionLeftTurn_1                 | gap_acceptance_junction_flow       | collisions_vehicle (3)                    
+26966    | 197   | SignalizedJunctionRightTurn_1                | gap_acceptance_junction_flow       | collisions_vehicle (3)                    
+27018    | 199   | SignalizedJunctionRightTurn_1                | gap_acceptance_junction_flow       | collisions_vehicle (3)                    
+25358    | 166   | StaticCutIn_1                                | actor_flow_merging_lane_change     | Failed - Agent timed out (3)              
+2709     | 039   | StaticCutIn_1                                | actor_flow_merging_lane_change     | Failed - Agent timed out (3)              
+25968    | 181   | VanillaSignalizedTurnEncounterGreenLight_1   | traffic_rules_priority             | outside_route_lanes (3)                   
+3144     | 059   | VanillaSignalizedTurnEncounterRedLight_1     | traffic_rules_priority             | red_light (3)                             
+3865     | 097   | VanillaSignalizedTurnEncounterRedLight_1     | traffic_rules_priority             | red_light (3)                             
+3876     | 099   | VanillaSignalizedTurnEncounterRedLight_1     | traffic_rules_priority             | red_light (3)                             
+3737     | 092   | VehicleTurningRoutePedestrian_1              | pedestrian_bicycle_parking         | collisions_pedestrian (3)                 
+3717     | 090   | VehicleTurningRoute_1                        | route_following_control            | collisions_vehicle (2)                    
+25378    | 167   | YieldToEmergencyVehicle_1                    | traffic_rules_priority             | yield_emergency_vehicle_infractions (3)   
+3364     | 066   | YieldToEmergencyVehicle_1                    | traffic_rules_priority             | yield_emergency_vehicle_infractions (3)   
+3373     | 067   | YieldToEmergencyVehicle_1                    | traffic_rules_priority             | yield_emergency_vehicle_infractions (3)   
+3378     | 068   | YieldToEmergencyVehicle_1                    | traffic_rules_priority             | yield_emergency_vehicle_infractions (3)   
+
