@@ -57,6 +57,9 @@ source thesis/env.sh
 
 cd {cfg["repo_root"]}
 
+export TEMPORAL_HISTORY_MODE={cfg["temporal_history_mode"]}
+echo TEMPORAL_HISTORY_MODE=$TEMPORAL_HISTORY_MODE
+
 export CARLA_ROOT={cfg["carla_root"]}
 export PYTHONPATH=$PYTHONPATH:{cfg["carla_root"]}/PythonAPI/carla
 export PYTHONPATH=$PYTHONPATH:{cfg["carla_root"]}/PythonAPI/carla/dist/carla-0.9.15-py3.7-linux-x86_64.egg
@@ -255,6 +258,12 @@ _base_dir = _env.get("BASE_DIR", os.path.dirname(_repo_root))
 _carla_root = _env.get("CARLA_ROOT", os.path.join(_base_dir, "carla", "CARLA_0.9.15"))
 _eval_out_root = _env.get("EVAL_OUT_ROOT", os.path.join(_base_dir, "eval_results", "Bench2Drive"))
 _eval_run_name = _env.get("EVAL_RUN_NAME", _env.get("EVAL_AGENT_NAME", "simlingo"))
+_temporal_history_mode = _env.get("TEMPORAL_HISTORY_MODE", "real").strip().lower().replace("-", "_")
+if _temporal_history_mode not in {"real", "repeat_current", "zero"}:
+    raise ValueError(
+        "TEMPORAL_HISTORY_MODE must be one of: real, repeat_current, zero. "
+        f"Got: {_temporal_history_mode}"
+    )
 _checkpoint = _env.get(
     "MODEL_CKPT",
     os.path.join(
@@ -284,7 +293,8 @@ configs = [
         "agent_config": "not_used",
         "username": _env.get("USERNAME", _env.get("USER", "x_hugaf")),
         "slurm_partition": _env.get("SLURM_PARTITION", "berzelius"),
-        "slurm_account": _env.get("SLURM_ACCOUNT", "")
+        "slurm_account": _env.get("SLURM_ACCOUNT", ""),
+        "temporal_history_mode": _temporal_history_mode,
     }
 ]
 # -------------------------------------- #

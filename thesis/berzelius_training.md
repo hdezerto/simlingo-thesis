@@ -302,6 +302,12 @@ MAX_EVAL_JOBS=8 bash thesis/scripts/launch_temporal_qformer_v8_fresh_lora_no_tem
 MAX_EVAL_JOBS=8 bash thesis/scripts/launch_temporal_delta_feature_v5_fresh_lora_full_eval.sh
 ```
 
+Repeat-current full-evaluation ablation for the qualitative temporal model:
+
+```bash
+MAX_EVAL_JOBS=24 bash thesis/scripts/launch_temporal_qformer_v8_fresh_lora_repeat_current_full_eval.sh
+```
+
 `start_eval_simlingo.py` skips routes with completed result files, so a crashed
 controller can be resumed with the same launcher after active route jobs finish.
 Do not merge/analyze before online evaluation finishes.
@@ -482,28 +488,37 @@ Current full-evaluation results:
 | --- | --- | --- | --- |
 | Corrected SimLingo baseline | `86.61 +/- 1.02` | `68.18% +/- 0.98%` | Final single-frame baseline |
 | No-temporal v8 fresh LoRA | `86.16 +/- 0.61` | `67.58% +/- 0.86%` | Main ablation: corrected supervision without temporal tokens |
-| Q-former v8 fresh LoRA | `87.06 +/- 0.14` | `69.85% +/- 0.21%` | Current strongest temporal model |
+| Q-former v8 fresh LoRA | `87.06 +/- 0.14` | `69.85% +/- 0.21%` | Query-based temporal adapter |
+| Delta feature v5 fresh LoRA | `87.84 +/- 0.73` | `71.67% +/- 0.57%` | Current quantitative leader |
 
 Current interpretation:
 
-- Q-former v8 fresh is the current strongest completed temporal result.
+- Delta feature v5 fresh LoRA is the current quantitative leader.
+- Q-former v8 fresh has the clearest qualitative temporal-interaction behavior
+  on the selected render set.
+- Use Q-former v8 fresh for the repeat-current full-evaluation ablation.
 - No-temporal v8 is the main temporal-module-off ablation.
-- Delta v5 full evaluation has completed raw route JSONs; generate the metrics
-  file before deciding whether it changes the final model selection.
 - Q-former v8 loaded LoRA remains a qualitative diagnostic only.
+- Delta v5 full evaluation is complete across all three seeds.
 
 Current running work:
 
-- Selected renders from `launch_selected_renders.sh all` are running. Completed
-  routes are reused or stitched on CPU; missing/incomplete routes rerun CARLA.
+- No render jobs are currently queued.
+- Selected renders are complete.
 - No new training jobs are needed for the main thesis story.
+- Q-former repeat-current full evaluation is prepared but not launched.
+- The only incomplete full-evaluation records are the corrected-baseline route
+  index `111`, route `11715`, seeds `2` and `3`; these are documented as CARLA
+  instability and counted conservatively as failed baseline attempts.
 
 Main result files for the thesis text:
 
 - `thesis/results/metrics_baseline_evalfix_full.txt`
 - `thesis/results/metrics_temporal_qformer_v8_fresh_lora_final_full.txt`
 - `thesis/results/metrics_temporal_qformer_v8_fresh_lora_no_temporal_full.txt`
+- `thesis/results/metrics_temporal_delta_feature_v5_fresh_lora_full.txt`
 - `thesis/results/scenario_comparison_baseline_evalfix_vs_qformer_v8_fresh.txt`
+- `thesis/results/scenario_comparison_baseline_evalfix_vs_delta_v5_fresh.txt`
 - `thesis/results/temporal_dataloader_audit/temporal_dataloader_audit_20260509_210739_summary.txt`
 - `thesis/results/interaction_supervision_audit_scene_facts_v3_yield_review/interaction_supervision_audit_20260524_155732_summary.txt`
 
@@ -512,27 +527,21 @@ Main result files for the thesis text:
 
 Immediate experiment tasks:
 
-- Wait for the selected render jobs to finish, then inspect only failed or
-  missing routes.
-- Generate the Delta v5 metrics file:
-
-```bash
-python thesis/analysis/merge_bench2drive_results.py \
-  -b /proj/berzelius-2023-154/users/x_hugaf/eval_results/Bench2Drive/simlingo_temporal_delta_feature_v5_fresh_lora_full/bench2drive \
-  > thesis/results/metrics_temporal_delta_feature_v5_fresh_lora_full.txt
-```
-
-- Add Delta v5 to the main benchmark table. Keep the main scenario comparison as
-  baseline vs Q-former v8 fresh unless Delta v5 clearly becomes the final winner.
-- Treat repeated `11755` crashes in no-temporal/repeat-current renders as CARLA
-  instability unless that route becomes essential to the final argument.
-
+- Launch Q-former repeat-current full evaluation if benchmark-level temporal
+  history ablation evidence is desired.
+- Add Delta v5 to the thesis benchmark table and discuss why it outperforms the
+  query-based adapter on aggregate metrics.
+- Keep scenario-level summaries for both Q-former and Delta concise: Delta
+  explains aggregate gains, while Q-former supports the qualitative temporal
+  analysis.
 Writing focus now:
 
 - Finish Chapter 3 with corrected-baseline metrics and the Chapter 3 render set.
-- Write Chapters 4 and 5 without waiting for render cleanup.
-- Draft Chapter 6 with placeholders for Delta v5 metrics and final render frames.
-- Use one main scenario analysis: corrected baseline vs the final winner model.
+- Finish Chapters 4 and 5 using the completed selected-render set.
+- Draft Chapter 6 with Delta v5 metrics and placeholders for final render
+  frames.
+- Report quantitative results first; select the final best temporal model after
+  the qualitative review.
 - Use no-temporal as the temporal-module-off ablation and repeat-current as the
   real-history usage diagnostic.
 

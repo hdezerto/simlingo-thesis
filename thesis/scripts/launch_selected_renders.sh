@@ -71,6 +71,7 @@ submit_diagnostics() {
   submit_manifest thesis/rendering/manifests/render_manifest_temporal_delta_feature_v5_fresh_lora_chapter3_selected.json
 }
 
+
 case "${TARGET}" in
   main)
     submit_main
