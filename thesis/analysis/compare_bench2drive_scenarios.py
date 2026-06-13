@@ -12,72 +12,6 @@ SEEDS = ("1", "2", "3")
 IGNORED_INFRACTIONS = {"min_speed_infractions"}
 
 
-SCENARIO_FAMILIES = {
-    "gap_acceptance_junction_flow": {
-        "SignalizedJunctionLeftTurn",
-        "SignalizedJunctionLeftTurnEnterFlow",
-        "NonSignalizedJunctionLeftTurn",
-        "NonSignalizedJunctionLeftTurnEnterFlow",
-        "SignalizedJunctionRightTurn",
-        "NonSignalizedJunctionRightTurn",
-        "EnterActorFlow",
-        "OppositeVehicleTakingPriority",
-    },
-    "actor_flow_merging_lane_change": {
-        "InterurbanActorFlow",
-        "InterurbanAdvancedActorFlow",
-        "MergerIntoSlowTraffic",
-        "MergerIntoSlowTrafficV2",
-        "HighwayCutIn",
-        "SequentialLaneChange",
-        "StaticCutIn",
-        "ParkingCutIn",
-    },
-    "obstacles_static_hazards": {
-        "ParkedObstacle",
-        "ParkedObstacleTwoWays",
-        "ConstructionObstacle",
-        "ConstructionObstacleTwoWays",
-        "Accident",
-        "AccidentTwoWays",
-        "BlockedIntersection",
-        "HazardAtSideLane",
-        "HazardAtSideLaneTwoWays",
-        "VehicleOpensDoorTwoWays",
-        "DynamicObjectCrossing",
-    },
-    "traffic_rules_priority": {
-        "YieldToEmergencyVehicle",
-        "OppositeVehicleRunningRedLight",
-        "VanillaSignalizedTurnEncounterRedLight",
-        "VanillaSignalizedTurnEncounterGreenLight",
-        "VanillaNonSignalizedTurnEncounterStopsign",
-        "VanillaNonSignalizedTurn",
-    },
-    "pedestrian_bicycle_parking": {
-        "PedestrianCrossing",
-        "ParkingCrossingPedestrian",
-        "ParkingExit",
-        "VehicleTurningRoutePedestrian",
-        "CrossingBicycleFlow",
-    },
-    "route_following_control": {
-        "HighwayExit",
-        "T_Junction",
-        "InvadingTurn",
-        "HardBreakRoute",
-        "ControlLoss",
-        "VehicleTurningRoute",
-    },
-}
-
-
-def scenario_family(scenario_type):
-    for family, scenario_types in SCENARIO_FAMILIES.items():
-        if scenario_type in scenario_types:
-            return family
-    return "other"
-
 
 def route_index_from_filename(filename):
     match = re.search(r"_(\d+)\.xml$", filename)
@@ -113,7 +47,6 @@ def parse_split(split_dir):
             "town": route.attrib.get("town", "Unknown"),
             "scenario_type": scenario_type,
             "scenario_name": scenario_name,
-            "family": scenario_family(scenario_type),
         }
     return routes
 
@@ -187,14 +120,6 @@ def collect_run(base_folder, routes):
         "causes": Counter(),
         "missing": 0,
     })
-    family_stats = defaultdict(lambda: {
-        "expected": 0,
-        "attempted": 0,
-        "failed": 0,
-        "causes": Counter(),
-        "missing": 0,
-    })
-
     for index, route in routes.items():
         attempts = {}
         failures = 0
@@ -215,19 +140,13 @@ def collect_run(base_folder, routes):
 
             scenario = scenario_stats[route["scenario_name"]]
             scenario["expected"] += 1
-            family = family_stats[route["family"]]
-            family["expected"] += 1
             if attempt["attempted"]:
                 scenario["attempted"] += 1
-                family["attempted"] += 1
                 if not attempt["success"]:
                     scenario["failed"] += 1
                     scenario["causes"][attempt["cause"]] += 1
-                    family["failed"] += 1
-                    family["causes"][attempt["cause"]] += 1
             else:
                 scenario["missing"] += 1
-                family["missing"] += 1
 
         route_stats[index] = {
             **route,
@@ -242,7 +161,6 @@ def collect_run(base_folder, routes):
     return {
         "routes": route_stats,
         "scenarios": scenario_stats,
-        "families": family_stats,
     }
 
 
@@ -284,6 +202,27 @@ def route_transition_label(base_route, cand_route):
     return transition_label(base_route["failed"], cand_route["failed"])
 
 
+def render_candidate_sort_key(label, pair):
+    base_route, cand_route = pair
+    base_failed = base_route["failed"]
+    cand_failed = cand_route["failed"]
+
+    if label == "fixed":
+        severity = base_failed - cand_failed
+    elif label in {"regressed", "worse_but_both_fail"}:
+        severity = cand_failed - base_failed
+    elif label == "failed_both_same_count":
+        severity = base_failed
+    else:
+        severity = abs(cand_failed - base_failed)
+
+    return (
+        -severity,
+        base_route["scenario_name"],
+        base_route["res_id"],
+    )
+
+
 def print_table(rows, headers, widths=None):
     rows = [tuple(str(value) for value in row) for row in rows]
     headers = tuple(str(header) for header in headers)
@@ -297,10 +236,10 @@ def print_table(rows, headers, widths=None):
         for i, value in enumerate(row):
             widths[i] = max(widths[i], len(value))
 
-    print(" | ".join(f"{h:<{w}}" for h, w in zip(headers, widths)))
+    print(" | ".join(f"{h:<{w}}" for h, w in zip(headers, widths)).rstrip())
     print("-" * (sum(widths) + 3 * (len(widths) - 1)))
     for row in rows:
-        print(" | ".join(f"{value:<{w}}" for value, w in zip(row, widths)))
+        print(" | ".join(f"{value:<{w}}" for value, w in zip(row, widths)).rstrip())
 
 
 def hardest_scenario_rows(run, limit=12):
@@ -335,51 +274,48 @@ def systematic_failure_rows(run):
                 route["route_id"],
                 route["res_id"],
                 route["scenario_name"],
-                route["family"],
                 main_cause(route),
             ))
     rows.sort(key=lambda row: (row[2], row[0]))
     return rows
 
 
+def failure_cause_counts(run):
+    counts = Counter()
+    for route in run["routes"].values():
+        for attempt in route["attempts"].values():
+            if attempt["attempted"]:
+                if not attempt["success"]:
+                    counts[attempt["cause"]] += 1
+            else:
+                counts[attempt["cause"]] += 1
+    return counts
+
+
+def print_failure_cause_distribution(title, baseline, candidate):
+    print(title)
+    print("Counts are unsuccessful route-seed attempts, ordered by total count across baseline and compared model.")
+    base_counts = failure_cause_counts(baseline)
+    cand_counts = failure_cause_counts(candidate)
+    causes = sorted(
+        set(base_counts) | set(cand_counts),
+        key=lambda cause: (-(base_counts[cause] + cand_counts[cause]), cause),
+    )
+    rows = [
+        (cause, base_counts[cause], cand_counts[cause], cand_counts[cause] - base_counts[cause])
+        for cause in causes
+    ]
+    print_table(rows, ("cause", "baseline", "model", "change"), (44, 10, 10, 8))
+    print()
+
+
 def print_systematic_failures(title, run):
     print(title)
     rows = systematic_failure_rows(run)
     if rows:
-        print_table(rows, ("route", "res", "scenario", "family", "main cause"), (8, 5, 44, 34, 32))
+        print_table(rows, ("route", "res", "scenario", "main cause"), (8, 5, 44, 32))
     else:
         print("(none)")
-    print()
-
-
-def split_composition_rows(routes):
-    family_counts = Counter(route["family"] for route in routes.values())
-    scenario_counts = Counter(route["scenario_name"] for route in routes.values())
-    rows = []
-    for family in sorted(family_counts):
-        scenario_names = sorted(
-            scenario for scenario in scenario_counts
-            if scenario_family(scenario.replace("_1", "")) == family
-        )
-        rows.append((
-            family,
-            family_counts[family],
-            family_counts[family] * len(SEEDS),
-            ", ".join(scenario_names),
-        ))
-    return rows
-
-
-def print_split_composition(routes):
-    print("8. TEST SPLIT AND SCENARIO FAMILY DEFINITIONS")
-    print("The Bench2Drive split used here has 220 routes: 44 scenario types, 5 routes per type, evaluated with 3 seeds.")
-    print("Scenario families are thesis-analysis groupings, not official Bench2Drive metrics.")
-    rows = split_composition_rows(routes)
-    print_table(
-        rows,
-        ("family", "routes", "attempts", "scenario types"),
-        (34, 6, 8, 20),
-    )
     print()
 
 
@@ -434,30 +370,6 @@ def compare(args):
     print_table(rows, ("metric", "baseline", "model", "change"), (32, 10, 10, 8))
     print()
 
-    print("2. SCENARIO FAMILY SUMMARY")
-    family_rows = []
-    for family in sorted(set(baseline["families"]) | set(candidate["families"])):
-        b = baseline["families"][family]
-        c = candidate["families"][family]
-        delta = c["failed"] - b["failed"]
-        family_rows.append((
-            family,
-            fmt_count(b),
-            f"{pct(b['failed'], b['expected']):5.1f}%",
-            fmt_count(c),
-            f"{pct(c['failed'], c['expected']):5.1f}%",
-            f"{delta:+d}",
-            main_cause(b),
-            main_cause(c),
-        ))
-    family_rows.sort(key=lambda row: int(row[5]), reverse=True)
-    print_table(
-        family_rows,
-        ("family", "baseline", "baseline %", "model", "model %", "change", "baseline main cause", "model main cause"),
-        (34, 18, 10, 18, 11, 7, 30, 30),
-    )
-    print()
-
     transition_counts = Counter()
     transition_rows = defaultdict(list)
     for index in sorted(routes):
@@ -466,6 +378,8 @@ def compare(args):
         label = route_transition_label(b, c)
         transition_counts[label] += 1
         transition_rows[label].append((b, c))
+
+    print_failure_cause_distribution("2. PRIMARY FAILURE CAUSE DISTRIBUTION", baseline, candidate)
 
     print("3. ROUTE-LEVEL TRANSITIONS")
     order = [
@@ -529,6 +443,8 @@ def compare(args):
     print()
 
     print("7. RENDER CANDIDATES")
+    print("Rows are sorted by route-level change severity, then by scenario and result id.")
+    print()
     candidate_specs = [
         ("fixed", "baseline fails, compared model succeeds"),
         ("regressed", "baseline succeeds, compared model fails"),
@@ -540,14 +456,13 @@ def compare(args):
         rows = []
         selected = sorted(
             transition_rows[label],
-            key=lambda pair: (pair[0]["family"], pair[0]["scenario_name"], pair[0]["res_id"]),
+            key=lambda pair: render_candidate_sort_key(label, pair),
         )
         for b, c in selected[: args.render_candidates_per_group]:
             rows.append((
                 b["route_id"],
                 b["res_id"],
                 b["scenario_name"],
-                b["family"],
                 f"{b['failed']}/3",
                 f"{c['failed']}/3",
                 main_cause(b),
@@ -556,20 +471,18 @@ def compare(args):
         if rows:
             print_table(
                 rows,
-                ("route", "res", "scenario", "family", "baseline", "model", "baseline cause", "model cause"),
-                (8, 5, 44, 34, 8, 9, 30, 30),
+                ("route", "res", "scenario", "baseline", "model", "baseline cause", "model cause"),
+                (8, 5, 44, 8, 9, 30, 30),
             )
         else:
             print("(none)")
         print()
 
-    print_split_composition(routes)
-
-    print("9. HARDEST SCENARIOS PER MODEL")
+    print("8. HARDEST SCENARIOS PER MODEL")
     print_hardest_scenarios(f"HARDEST SCENARIOS: {baseline_label}", baseline)
     print_hardest_scenarios(f"HARDEST SCENARIOS: {comparison_label}", candidate)
 
-    print("10. ALL 44 SCENARIO TYPES")
+    print("9. ALL 44 SCENARIO TYPES")
     scenario_rows.sort(key=lambda row: (row[0]))
     print_table(
         [(r[0], r[1], r[2], r[3], r[4], f"{r[5]:+d}", r[6], r[7]) for r in scenario_rows],
@@ -578,7 +491,7 @@ def compare(args):
     )
     print()
 
-    print("11. SYSTEMATIC ROUTE FAILURES PER MODEL")
+    print("10. SYSTEMATIC ROUTE FAILURES PER MODEL")
     print_systematic_failures(f"SYSTEMATIC ROUTE FAILURES: {baseline_label}", baseline)
     print_systematic_failures(f"SYSTEMATIC ROUTE FAILURES: {comparison_label}", candidate)
 
