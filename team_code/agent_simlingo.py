@@ -193,6 +193,7 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
             print(f"Config path: {self.config_path}")
             self.save_path_root = route_index
             print(f"Save path root: {self.save_path_root}")
+        self.route_index = route_index
         self.step = -1
         self.initialized = False
         self.device = torch.device('cuda')
@@ -423,6 +424,28 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
                 save_heatmaps=_env_flag('TEMPORAL_SIGNAL_DIAGNOSTIC_HEATMAPS', True),
             )
             print(self.temporal_signal_diagnostic.describe())
+
+        self.inference_profile_enabled = _env_flag('SIMLINGO_PROFILE_INFERENCE', False)
+        self.inference_profile_warmup = max(0, int(os.environ.get('SIMLINGO_PROFILE_WARMUP', '20')))
+        self.inference_profile_records = []
+        self.inference_profile_variant = os.environ.get(
+            'SIMLINGO_PROFILE_VARIANT',
+            os.environ.get('EVAL_RUN_NAME', 'unknown'),
+        )
+        self.inference_profile_route_index = os.environ.get('EVAL_ROUTE_INDEX', route_index)
+        self.inference_profile_route_id = os.environ.get('EVAL_ROUTE_B2D_ID', '')
+        self.inference_profile_seed = os.environ.get('EVAL_SEED', '')
+        self.inference_profile_dir = Path(
+            os.environ.get('SIMLINGO_PROFILE_DIR', self.save_path_metric)
+        )
+        if self.inference_profile_enabled and self.device.type == 'cuda':
+            torch.cuda.synchronize(self.device)
+            torch.cuda.reset_peak_memory_stats(self.device)
+            print(
+                'Inference profiling enabled '
+                f'(variant={self.inference_profile_variant}, '
+                f'warmup={self.inference_profile_warmup})'
+            )
             
     def input_thread(self):
         while self.running:
@@ -834,6 +857,62 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
 
         return result
 
+    def _profiled_model_call(self, model_input):
+        if self.device.type == 'cuda':
+            torch.cuda.synchronize(self.device)
+        start_time = time.perf_counter()
+        output = self.model(model_input)
+        if self.device.type == 'cuda':
+            torch.cuda.synchronize(self.device)
+        latency_ms = (time.perf_counter() - start_time) * 1000.0
+
+        call_index = len(self.inference_profile_records)
+        self.inference_profile_records.append({
+            'call_index': int(call_index),
+            'step': int(self.step),
+            'latency_ms': float(latency_ms),
+            'warmup': bool(call_index < self.inference_profile_warmup),
+        })
+        return output
+
+    def _write_inference_profile(self):
+        if not getattr(self, 'inference_profile_enabled', False):
+            return
+
+        records = getattr(self, 'inference_profile_records', [])
+        measured = [r['latency_ms'] for r in records if not r.get('warmup', False)]
+        summary = {
+            'variant': getattr(self, 'inference_profile_variant', 'unknown'),
+            'route_index': getattr(self, 'inference_profile_route_index', None),
+            'route_id': getattr(self, 'inference_profile_route_id', None),
+            'seed': getattr(self, 'inference_profile_seed', None),
+            'total_model_calls': int(len(records)),
+            'warmup_model_calls': int(min(getattr(self, 'inference_profile_warmup', 0), len(records))),
+            'measured_model_calls': int(len(measured)),
+            'mean_latency_ms': float(np.mean(measured)) if measured else None,
+            'p95_latency_ms': float(np.percentile(measured, 95)) if measured else None,
+            'peak_gpu_memory_allocated_gb': None,
+            'peak_gpu_memory_reserved_gb': None,
+            'records': records,
+        }
+        if self.device.type == 'cuda':
+            torch.cuda.synchronize(self.device)
+            summary['peak_gpu_memory_allocated_gb'] = float(torch.cuda.max_memory_allocated(self.device) / 1e9)
+            summary['peak_gpu_memory_reserved_gb'] = float(torch.cuda.max_memory_reserved(self.device) / 1e9)
+
+        output_dir = getattr(self, 'inference_profile_dir', Path(self.save_path_metric))
+        output_dir.mkdir(parents=True, exist_ok=True)
+        variant_slug = ''.join(
+            c if c.isalnum() or c in {'-', '_', '.'} else '_'
+            for c in str(summary['variant'])
+        )
+        route_label = summary.get('route_id') or summary.get('route_index') or 'unknown'
+        seed_label = summary.get('seed') or 'unknown'
+        output_path = output_dir / f'{variant_slug}_route{route_label}_seed{seed_label}_profile.json'
+        with output_path.open('w', encoding='utf-8') as f:
+            json.dump(summary, f, indent=2)
+        print(f'Wrote inference profile: {output_path}')
+
     def _language_to_text(self, language):
         if language is None:
             return None
@@ -909,7 +988,10 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
         # initialize DrivingInput with dict self.DrivingInput
         model_input = DrivingInput(**self.DrivingInput)
         with torch.autocast(device_type=self.device.type, dtype=torch.float16, enabled=self.device.type == "cuda"):
-            pred_speed_wps, pred_route, language = self.model(model_input)
+            if self.inference_profile_enabled:
+                pred_speed_wps, pred_route, language = self._profiled_model_call(model_input)
+            else:
+                pred_speed_wps, pred_route, language = self.model(model_input)
         generated_commentary = self._language_to_text(language)
         pred_speed_wps = pred_speed_wps.float() if pred_speed_wps is not None else None
         pred_route = pred_route.float() if pred_route is not None else None
@@ -1141,6 +1223,8 @@ class LingoAgent(autonomous_agent.AutonomousAgent):
         The leaderboard client doesn't properly clear up the agent after the route finishes so we need to do it here.
         Also writes logging files to disk.
         """
+
+        self._write_inference_profile()
 
         for attr in ("model", "config", "cfg", "processor"):
             if hasattr(self, attr):

@@ -302,10 +302,34 @@ MAX_EVAL_JOBS=8 bash thesis/scripts/launch_temporal_qformer_v8_fresh_lora_no_tem
 MAX_EVAL_JOBS=8 bash thesis/scripts/launch_temporal_delta_feature_v5_fresh_lora_full_eval.sh
 ```
 
+Loaded-LoRA full-evaluation diagnostic:
+
+```bash
+MAX_EVAL_JOBS=8 bash thesis/scripts/launch_temporal_qformer_v8_loaded_lora_full_eval.sh
+```
+
 Repeat-current full-evaluation ablation for the qualitative temporal model:
 
 ```bash
 MAX_EVAL_JOBS=24 bash thesis/scripts/launch_temporal_qformer_v8_fresh_lora_repeat_current_full_eval.sh
+```
+
+Inference profiling for the Chapter 6 computational-cost table uses route `3373`
+only and runs the released baseline, Q-former v8 fresh-LoRA, and Delta v5
+fresh-LoRA under matched route/seed conditions. It is separate from the full
+benchmark manager and enables profiling only for these jobs.
+
+```bash
+bash thesis/scripts/launch_inference_profiling_route3373.sh
+```
+
+After the three jobs finish, run the summarizer command printed by the launcher,
+for example:
+
+```bash
+python thesis/analysis/summarize_inference_profiles.py \
+  --root "${BASE_DIR}/eval_results/Bench2Drive/inference_profiles/profile_json/<run_tag>" \
+  --out thesis/results/inference_profile_route3373_<run_tag>.txt
 ```
 
 `start_eval_simlingo.py` skips routes with completed result files, so a crashed
@@ -345,12 +369,12 @@ Chapter 3 render groups:
 
 Current render manifests:
 
-- `thesis/rendering/manifests/render_manifest_baseline_evalfix_curated_selected.json`
-- `thesis/rendering/manifests/render_manifest_temporal_qformer_v8_fresh_lora_curated_selected.json`
-- `thesis/rendering/manifests/render_manifest_temporal_qformer_v8_fresh_lora_no_temporal_chapter3_selected.json`
-- `thesis/rendering/manifests/render_manifest_temporal_delta_feature_v5_fresh_lora_chapter3_selected.json`
-- `thesis/rendering/manifests/render_manifest_temporal_qformer_v8_loaded_lora_chapter3_selected.json`
-- `thesis/rendering/manifests/render_manifest_temporal_qformer_v8_fresh_lora_chapter3_repeat_current.json`
+- `thesis/rendering/manifests/render_manifest_baseline_evalfix_diagnostic_and_result_selected.json`
+- `thesis/rendering/manifests/render_manifest_temporal_qformer_v8_fresh_lora_diagnostic_and_result_selected.json`
+- `thesis/rendering/manifests/render_manifest_temporal_qformer_v8_fresh_lora_no_temporal_diagnostic_selected.json`
+- `thesis/rendering/manifests/render_manifest_temporal_delta_feature_v5_fresh_lora_diagnostic_and_result_selected.json`
+- `thesis/rendering/manifests/render_manifest_temporal_qformer_v8_loaded_lora_diagnostic_selected.json`
+- `thesis/rendering/manifests/render_manifest_temporal_qformer_v8_fresh_lora_repeat_current_diagnostic_selected.json`
 
 Old selected-render outputs are archived at
 `${BASE_DIR}/eval_results/archive/Bench2Drive_selected_old_2026_05_31/`.
@@ -363,13 +387,17 @@ bash thesis/scripts/launch_selected_renders.sh --dry-run all
 bash thesis/scripts/launch_selected_renders.sh all
 ```
 
-Useful targets: `main` for baseline + Q-former v8 fresh, `diagnostics` for
-loaded/no-temporal/Delta Chapter 3 renders, and `repeat-current` for the
+Useful targets: `main` for the baseline, Q-former v8 fresh, and Delta v5
+diagnostic/result-selected renders; `diagnostics` for loaded-LoRA and
+no-temporal diagnostic renders; and `repeat-current` for the
 real-history diagnostic. Individual targets are also available: `baseline`,
-`qformer-fresh`, `loaded`, `no-temporal`, and `delta`.
+`qformer-fresh`, `delta`, `loaded`, and `no-temporal`.
 
-The matching real-history outputs for `repeat-current` are already in
-`${BASE_DIR}/eval_results/Bench2Drive/simlingo_temporal_qformer_v8_fresh_lora_curated_selected/`.
+The selected-render outputs are written under
+`${BASE_DIR}/eval_results/Bench2Drive/renders/<agent_name>/`. The matching
+real-history outputs for `repeat-current` are produced by the Q-former
+diagnostic/result-selected manifest under
+`${BASE_DIR}/eval_results/Bench2Drive/renders/simlingo_temporal_qformer_v8_fresh_lora_diagnostic_and_result_selected/`.
 
 The render submitter reuses completed result JSONs and multiview frames when
 available. If a route has complete frames, the job only stitches the video on the
@@ -381,7 +409,7 @@ Monitor:
 squeue -u "$USERNAME"
 ```
 
-Render outputs are written under `${EVAL_OUT_ROOT}/<agent_name>/bench2drive/<seed>/`.
+Render outputs are written under `${BASE_DIR}/eval_results/Bench2Drive/renders/<agent_name>/bench2drive/<seed>/`.
 
 ------------
 

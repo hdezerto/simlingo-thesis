@@ -150,6 +150,7 @@ def _start_ffmpeg_writer(output_video: Path, width: int, height: int, fps: int, 
     cmd = [
         'ffmpeg',
         '-y',
+        '-loglevel', 'error',
         '-f', 'rawvideo',
         '-pix_fmt', 'bgr24',
         '-s:v', f'{width}x{height}',
