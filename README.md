@@ -21,12 +21,10 @@ This repository is my master-thesis fork of SimLingo. The original upstream proj
 
 ## Branch Strategy
 
-This repository is organized around a stable baseline branch and separate method branches built on top of it.
-
-Planned branch roles:
-
-- `baseline`: Berzelius-focused reproduction of the SimLingo baseline
-- method branches: thesis extensions built on top of the baseline, for example a temporal module or feature-delta variant
+The default thesis branch contains both the corrected SimLingo baseline
+reproduction and the temporal variants used in the report. Older branches are
+kept only as provenance; the thesis results should be reproduced from the
+default branch.
 
 Use this repository in two layers:
 
