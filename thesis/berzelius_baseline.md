@@ -1,16 +1,9 @@
 # SimLingo Baseline on Berzelius
 
-This guide reproduces the SimLingo baseline on Berzelius with CARLA 0.9.15 and Bench2Drive.
-
-Context:
-- Thesis/project metadata is kept in the repository root `README.md`.
-- This document is the detailed operational guide for the `baseline` branch.
-- The original upstream project documentation remains at repository root in `README_UPSTREAM.md`.
-- This guide documents the Berzelius-specific baseline workflow and layout.
-
-Important scope:
-- The repository contains code only.
-- CARLA binaries, pretrained weights, logs, and results live outside the repo.
+This guide is linked from the repository `README.md` and gives the
+Berzelius-specific workflow for reproducing the corrected SimLingo baseline with
+CARLA 0.9.15 and Bench2Drive. CARLA binaries, pretrained weights, raw logs, and
+raw evaluation outputs are expected outside the repository.
 
 ## Index
 
@@ -23,16 +16,11 @@ Important scope:
 - [4. Pretrained Weights](#4-pretrained-weights)
 - [5. Environment Variables](#5-environment-variables)
 - [6. Smoke Test CARLA](#6-smoke-test-carla)
-- [7. Run Baseline Orchestrator](#7-run-baseline-orchestrator)
-- [8. Monitor and Stop](#8-monitor-and-stop)
+- [7. Run Corrected Baseline Evaluation](#7-run-corrected-baseline-evaluation)
+- [8. Monitor, Resume, and Stop](#8-monitor-resume-and-stop)
 - [9. Results and Analysis](#9-results-and-analysis)
-- [10. Render Multiple Videos (Manifest-based)](#10-render-multiple-videos-manifest-based)
-    - [10.1 Edit the case list](#101-edit-the-case-list)
-    - [10.2 Prepare environment (login node)](#102-prepare-environment-login-node)
-    - [10.3 (Optional) Dry-run job generation](#103-optional-dry-run-job-generation)
-    - [10.4 Submit all render jobs](#104-submit-all-render-jobs)
-    - [10.5 Monitor](#105-monitor)
-- [Troubleshooting / Notes](#troubleshooting--notes)
+- [10. Render Selected Baseline Videos](#10-render-selected-baseline-videos)
+- [Troubleshooting](#troubleshooting)
 
 ## 0. Set Variables
 
@@ -151,7 +139,7 @@ ssh "${USERNAME}"@berzelius.nsc.liu.se
 cd ${BASE_DIR}
 git clone https://github.com/hdezerto/simlingo-thesis.git
 cd simlingo-thesis
-git checkout baseline
+git checkout temporal-module
 ```
 
 Create and activate environment (first time):
@@ -234,62 +222,68 @@ sacct -j <JOBID> --format=JobID,State,ExitCode,Elapsed
 
 `CANCELLED` is expected for this manual smoke-test stop.
 
-## 7. Run Baseline Orchestrator
+## 7. Run Corrected Baseline Evaluation
 
-Do not run baseline with direct `sbatch`. Use the manager script:
+Run the full corrected baseline evaluation from an interactive `tmux` session.
+The launcher sets the thesis baseline name, checkpoint, output root, and maximum
+number of concurrent route jobs.
 
 ```bash
 cd ${BASE_DIR}/simlingo-thesis
-tmux new -s baseline
-```
-
-If session already exists:
-
-```bash
-tmux attach -t baseline
+tmux new -As baseline
 ```
 
 Inside tmux:
 
 ```bash
-# 1. Load Environment
 module load Miniforge3/24.7.1-2-hpc1-bdist
 conda activate simlingo
-export EVAL_RUN_NAME="simlingo"
 source thesis/env.sh
 
-# 2. Set Parallelism (Limit to 8 concurrent jobs = 1 full node)
-echo "8" > max_num_jobs.txt
+MAX_EVAL_JOBS=8 bash thesis/scripts/launch_baseline_current_full_eval.sh
+```
 
-# 3. Start the Orchestrator
-python start_eval_simlingo.py
+The launcher evaluates the released SimLingo `epoch=013` checkpoint with the
+current thesis evaluation code and writes results to:
+
+```bash
+${BASE_DIR}/eval_results/Bench2Drive/simlingo_baseline_evalfix_full/bench2drive
 ```
 
 Notes:
-- The run is approximately 660 jobs (220 routes x 3 seeds).
-- Output like `660` printed repeatedly is normal debug output from queue length, not immediate failure.
 
-Detach tmux and leave running:
-- Press `Ctrl+B`, then `D`.
+- The full benchmark is `220` routes over `3` seeds, i.e. `660` route-seed
+  attempts.
+- `start_eval_simlingo.py` skips completed result files, so the same launcher can
+  resume a partial run after active route jobs have finished.
+- Output such as repeated queue-length numbers is normal manager output, not an
+  immediate failure.
 
-Reattach later:
+Detach tmux with `Ctrl+B`, then `D`. Reattach with:
 
 ```bash
 tmux attach -t baseline
 ```
 
-## 8. Monitor and Stop
+## 8. Monitor, Resume, and Stop
 
-Monitor cluster jobs:
+Monitor active jobs:
 
 ```bash
 squeue -u "$USERNAME"
 ```
 
-When you want to stop all running baseline jobs:
+If the manager stops but route jobs have finished or failed, rerun the same
+launcher from tmux to resume missing attempts:
 
-1. In tmux, stop manager with `Ctrl+C`.
-2. Cancel jobs:
+```bash
+MAX_EVAL_JOBS=8 bash thesis/scripts/launch_baseline_current_full_eval.sh
+```
+
+To stop a running evaluation intentionally:
+
+1. Stop the tmux manager with `Ctrl+C`.
+2. Cancel remaining route jobs:
 
 ```bash
 scancel -u "$USERNAME"
@@ -297,183 +291,83 @@ scancel -u "$USERNAME"
 
 ## 9. Results and Analysis
 
-After queue is empty and all jobs are done:
+After the route queue is empty, merge the benchmark outputs:
 
 ```bash
-export EVAL_RUN_NAME="simlingo"
+export EVAL_RUN_NAME="simlingo_baseline_evalfix_full"
+export EVAL_AGENT_NAME="${EVAL_RUN_NAME}"
 source thesis/env.sh
+
+python thesis/analysis/merge_bench2drive_results.py \
+  -b "${BENCH2DRIVE_ROOT}" \
+  > thesis/results/metrics_baseline_evalfix_full.txt
+
+cat thesis/results/metrics_baseline_evalfix_full.txt
 ```
 
-First, merge and summarize the results for each seed:
+The committed corrected-baseline summary is:
+
+```text
+Driving Score: 86.61 +/- 1.02
+Success Rate:  68.18% +/- 0.98%
+```
+
+To inspect one route result, use the run index inside the corresponding seed
+folder, for example:
+
 ```bash
-python thesis/analysis/merge_bench2drive_results.py -b ${BENCH2DRIVE_ROOT}
+cat "${BENCH2DRIVE_ROOT}/1/res/000_res.json"
 ```
 
-Then, run the scenario failure analysis to generate tables of systematic and hardest scenario failures:
-```bash
-python thesis/analysis/analyze_scenario_failures.py -b ${BENCH2DRIVE_ROOT}
-```
+Scenario comparisons against temporal variants are documented in
+`thesis/berzelius_training.md` and use `thesis/analysis/compare_bench2drive_scenarios.py`.
 
-By default, the generated report is written to:
-```bash
-thesis/results/scenario_failure_report.txt
-```
+## 10. Render Selected Baseline Videos
 
-The committed baseline report artifact is kept in:
-```bash
-thesis/results/scenario_failure_report_baseline.txt
-```
-
-To inspect a specific benchmark run result, change the run index (e.g., `000`) as needed:
-```bash
-cat ${BENCH2DRIVE_ROOT}/1/res/000_res.json
-```
-
-**Expected Performance:**
-
-* **Driving Score (DS):** ≈ 85 ± 1
-
-## 10. Render Multiple Videos (Manifest-based)
-
-To render a list of selected route/seed cases, use the manifest-driven pipeline.
-
-### 10.1 Edit the case list
-
-Start from the template manifest:
-```bash
-thesis/rendering/manifests/render_manifest_template.json
-```
-
-You can also inspect the committed example manifests:
-
-- `thesis/rendering/manifests/render_manifest_1.json`
-- `thesis/rendering/manifests/render_manifest_2.json`
-
-Add all relevant route/seed pairs under `cases`.
-
-Case fields:
-- `route_id` (required): route number as string or integer.
-- `seed` (required): traffic-manager seed (integer).
-
-Render/debug controls (in `defaults`, or per case):
-- `debug_viz` (bool):
-    - `true` => generate debug-overlay frames and stitch MP4.
-    - `false` => metrics-only run (no frame generation, no MP4 stitching).
-- `debug_stride` (int, >=1): save one debug frame every N simulator steps.
-- `debug_save_language` (bool): include prompt/answer text panel in debug overlays.
-
-Optional notification fields (in `defaults`, or per case):
-- `mail_user`: email address for SLURM notifications.
-- `mail_type`: SLURM mail types (default in script generator: `END,FAIL`).
-
-Example:
-```json
-{
-    "route_id": "2201",
-    "seed": 1
-}
-```
-
-Example with notifications in `defaults`:
-```json
-"mail_user": "your.name@liu.se",
-"mail_type": "END,FAIL"
-```
-
-Example with debug rendering enabled:
-```json
-"debug_viz": true,
-"debug_stride": 5,
-"debug_save_language": true
-```
-
-### 10.2 Prepare environment (login node)
+Selected baseline videos use the same rendering pipeline as the temporal
+variants. To render only the corrected-baseline diagnostic and result-selected
+cases:
 
 ```bash
 cd ${BASE_DIR}/simlingo-thesis
 module load Miniforge3/24.7.1-2-hpc1-bdist
 conda activate simlingo
 source thesis/env.sh
+
+bash thesis/scripts/launch_selected_renders.sh --dry-run baseline
+bash thesis/scripts/launch_selected_renders.sh baseline
 ```
 
-### 10.3 (Optional) Dry-run job generation
+The baseline render manifest is:
 
 ```bash
-python thesis/rendering/submit_render_jobs.py --manifest thesis/rendering/manifests/render_manifest_template.json --dry-run
+thesis/rendering/manifests/render_manifest_baseline_evalfix_diagnostic_and_result_selected.json
 ```
 
-### 10.4 Submit all render jobs
+Render outputs are written under:
 
 ```bash
-python thesis/rendering/submit_render_jobs.py --manifest thesis/rendering/manifests/render_manifest_template.json
+${BASE_DIR}/eval_results/Bench2Drive/renders/<agent_name>/bench2drive/<seed>/
 ```
 
-### Current execution behavior
-
-- The render pipeline is frame-based (no CARLA replay):
-    1) run evaluator for the route subset,
-    2) save multiview frame folders (`rgb_front/`, `rgb_left/`, `rgb_right/`, `rgb_rear/`) + `meta/`,
-    3) stitch MP4 from those frames.
-- If `debug_viz=false`: the job still runs evaluation, but skips frame generation and MP4 stitching (metrics-only mode).
-- If `debug_viz=true`: the job generates debug-overlay frames and stitches MP4.
-- Stitching FPS is auto-inferred from frame index spacing in `thesis/rendering/generate_video_from_frames.py` (with `--sim-fps` from manifest `defaults.fps`).
-
-
-### 10.5 Monitor
-
-```bash
-squeue -u "$USERNAME"
-```
-
-Each case writes logs to:
-```bash
-${BASE_DIR}/eval_results/Bench2Drive/simlingo/bench2drive/<SEED>/out/render_route<ROUTE_ID>_seed<SEED>.out
-${BASE_DIR}/eval_results/Bench2Drive/simlingo/bench2drive/<SEED>/err/render_route<ROUTE_ID>_seed<SEED>.err
-```
-
-### Output layout
-
-For each seed, outputs are written under:
-```bash
-${BASE_DIR}/eval_results/Bench2Drive/simlingo/bench2drive/<SEED>/
-```
-
-Main artifacts:
-```bash
-/run/render_route<ROUTE_ID>_seed<SEED>.slurm
-/res/rendering_route<ROUTE_ID>_seed<SEED>_res.json
-/recordings/RouteScenario_<ROUTE_ID>_seed<SEED>_rep0.mp4   # only when debug_viz=true
-/frames/route<ROUTE_ID>_seed<SEED>/rgb_front/*.jpg          # only when debug_viz=true
-/frames/route<ROUTE_ID>_seed<SEED>/rgb_left/*.jpg           # only when debug_viz=true
-/frames/route<ROUTE_ID>_seed<SEED>/rgb_right/*.jpg          # only when debug_viz=true
-/frames/route<ROUTE_ID>_seed<SEED>/rgb_rear/*.jpg           # only when debug_viz=true
-/frames/route<ROUTE_ID>_seed<SEED>/meta/*.json              # only when debug_viz=true
-/out/render_route<ROUTE_ID>_seed<SEED>.out
-/err/render_route<ROUTE_ID>_seed<SEED>.err
-```
-
-Naming note:
-- Benchmark aggregate runs keep index-based files such as `<RUN_INDEX_PAD3>_res.json` (e.g., `000_res.json`).
-- Manifest render jobs use `rendering_route<ROUTE_ID>_seed<SEED>_res.json` to avoid confusion between benchmark run index and actual route id.
-
-Inspect a manifest render result example:
-```bash
-cat ${BASE_DIR}/eval_results/Bench2Drive/simlingo/bench2drive/1/res/rendering_route2201_seed1_res.json
-```
+The compressed supplementary videos committed to the repository are served by the
+GitHub Pages video player at `thesis/videos/`.
 
 ---
 
-## Troubleshooting / Notes
+## Troubleshooting
 
-* **Immediate Job Crashes:** If jobs fail instantly, check the error logs for a specific route:
+**Missing maps:** errors such as `Map 'Town12' not found` or `Map 'Town13' not
+found` usually mean the CARLA additional maps were not imported.
+
+**Missing checkpoint:** rerun the pretrained-weight setup and check:
+
 ```bash
-cat ${BASE_DIR}/eval_results/Bench2Drive/simlingo/bench2drive/1/err/render_route2201_seed1.err
+ls -lh "${MODEL_CKPT}"
 ```
 
-* **Empty folders under `viz/` with run numbers (`000`, `001`, ...):**
-    These are placeholder folders from the evaluator-style save path convention (run index based). For manifest rendering, actual artifacts are written into route-named paths (for example, `viz/2201/RouteScenario_.../debug_viz/...`) and frame/video outputs are under `frames/` and `recordings/`. Empty numeric `viz` folders are safe to ignore or delete.
+**Immediate route failures:** inspect the route error logs under
+`${BENCH2DRIVE_ROOT}/<seed>/err/`.
 
-* **Delete All Results (if needed):** Destructive and irreversible. Only run this if you explicitly want to remove all evaluation outputs and start fresh:
-```bash
-rm -rf ${BASE_DIR}/eval_results/Bench2Drive
-```
+**Starting over:** deleting evaluation outputs is destructive. Only remove a run
+directory when you intentionally want to rerun it from scratch.
