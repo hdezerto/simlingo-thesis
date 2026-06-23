@@ -23,10 +23,9 @@ context experiments. The original upstream project README is preserved in
 
 ## Branch Strategy
 
-The default thesis branch contains both the corrected SimLingo baseline
-reproduction and the temporal variants used in the report. Older branches are
-kept only as provenance; the thesis results should be reproduced from the
-default branch.
+The default branch, `temporal-module`, contains both the corrected SimLingo
+baseline reproduction and the temporal variants used in the report. The thesis
+results should be reproduced from this branch.
 
 ## Recommended Use
 

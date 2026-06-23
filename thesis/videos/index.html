@@ -8,11 +8,15 @@
     :root {
       color-scheme: light;
       --text: #1f2933;
-      --muted: #5f6f7f;
-      --line: #d8dee6;
+      --muted: #607080;
+      --line: #d9e0e8;
       --bg: #f7f8fa;
-      --card: #ffffff;
+      --surface: #ffffff;
+      --subtle: #fbfcfd;
       --accent: #0f5f8f;
+      --accent-bg: #e9f3f8;
+      --featured: #fff8e6;
+      --featured-line: #d19a1d;
     }
 
     * { box-sizing: border-box; }
@@ -25,7 +29,7 @@
       line-height: 1.5;
     }
 
-    header, main {
+    header, main, footer {
       width: min(1180px, calc(100% - 32px));
       margin: 0 auto;
     }
@@ -37,7 +41,7 @@
 
     h1 {
       margin: 0 0 8px;
-      font-size: clamp(1.8rem, 4vw, 3rem);
+      font-size: clamp(1.9rem, 4vw, 3rem);
       line-height: 1.1;
       letter-spacing: 0;
     }
@@ -49,43 +53,194 @@
     }
 
     h3 {
-      margin: 0 0 4px;
-      font-size: 1rem;
+      margin: 0;
+      font-size: 1.05rem;
       letter-spacing: 0;
     }
 
     p { margin: 0; }
 
-    .intro {
-      max-width: 760px;
+    a { color: var(--accent); }
+
+    .intro, section > p, .adapter-block > p {
+      max-width: 840px;
       color: var(--muted);
     }
 
-    section > p {
-      max-width: 760px;
-      margin-bottom: 14px;
-      color: var(--muted);
+    .quick-nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 18px;
     }
 
-    .grid {
+    .quick-nav a {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 6px 11px;
+      background: var(--surface);
+      text-decoration: none;
+      font-size: 0.92rem;
+    }
+
+    .summary-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .summary-row span, .variant-chips span {
+      background: var(--accent-bg);
+      border: 1px solid #c9e1ee;
+      border-radius: 999px;
+      padding: 5px 9px;
+    }
+
+    .note-box {
+      margin-top: 18px;
+      max-width: 940px;
+      border-left: 4px solid var(--accent);
+      background: var(--surface);
+      padding: 11px 14px;
+      color: var(--muted);
+      font-size: 0.94rem;
+    }
+
+    .note-box.snapshot-key {
+      border-left-color: var(--featured-line);
+      background: var(--featured);
+    }
+
+    .adapter-block {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+    }
+
+    .adapter-block h3 {
+      margin: 0 0 4px;
+      font-size: 1.08rem;
+    }
+
+    .route-list {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .route-group {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: clip;
+    }
+
+    .route-group.featured {
+      background: var(--featured);
+      border-color: var(--featured-line);
+      box-shadow: inset 4px 0 0 var(--featured-line);
+    }
+
+    .route-group summary {
+      display: flex;
+      justify-content: space-between;
       gap: 16px;
+      align-items: center;
+      cursor: pointer;
+      padding: 12px 14px;
+    }
+
+    .route-title {
+      display: grid;
+      gap: 2px;
+      min-width: 0;
+      font-weight: 700;
+    }
+
+    .route-title small {
+      color: var(--muted);
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+
+    .snapshot-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: -2px 0 8px;
+    }
+
+    .snapshot-tag {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 2px 7px;
+      font-size: 0.76rem;
+      font-weight: 650;
+      line-height: 1.4;
+    }
+
+    .snapshot-tag.chapter-3 {
+      border: 1px solid #b9d8e8;
+      color: var(--accent);
+      background: var(--accent-bg);
+    }
+
+    .snapshot-tag.chapter-6 {
+      border: 1px solid var(--featured-line);
+      color: #704f08;
+      background: #fff2c2;
+    }
+
+    .video-count {
+      color: var(--muted);
+      font-size: 0.9rem;
+      white-space: nowrap;
+    }
+
+    .variant-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      padding: 0 14px 12px;
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+
+    .video-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 14px;
+      padding: 0 14px 14px;
       align-items: start;
     }
 
     .video-card {
-      background: var(--card);
+      min-width: 0;
       border: 1px solid var(--line);
       border-radius: 8px;
-      padding: 12px;
-      min-width: 0;
+      padding: 10px;
+      background: var(--subtle);
     }
 
-    .meta {
-      margin-bottom: 10px;
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: baseline;
+      margin-bottom: 8px;
+    }
+
+    .card-header h3 {
+      font-size: 0.98rem;
+    }
+
+    .card-header span {
       color: var(--muted);
-      font-size: 0.9rem;
+      font-size: 0.84rem;
+      white-space: nowrap;
     }
 
     video {
@@ -96,17 +251,19 @@
       border-radius: 6px;
     }
 
-    .path {
+    .observation {
       margin-top: 8px;
-      font-size: 0.8rem;
-      overflow-wrap: anywhere;
+      color: var(--text);
+      font-size: 0.9rem;
     }
 
-    a { color: var(--accent); }
+    .mp4-link {
+      margin-top: 6px;
+      font-size: 0.84rem;
+    }
 
     footer {
-      width: min(1180px, calc(100% - 32px));
-      margin: 36px auto 0;
+      margin-top: 36px;
       padding: 20px 0 36px;
       border-top: 1px solid var(--line);
       color: var(--muted);
@@ -117,555 +274,1080 @@
 <body>
   <header>
     <h1>Supplementary Videos</h1>
-    <p class="intro">Rendered videos for the qualitative analysis in the SimLingo temporal-history thesis. The videos are grouped into the diagnostic routes and the result-selected routes discussed in Chapter 6.</p>
+    <p class="intro">Rendered videos for the qualitative analysis in the SimLingo temporal-history thesis. Videos are grouped by route so that baseline, temporal variants, controls, and diagnostics can be compared within the same scenario.</p>
+    <nav class="quick-nav" aria-label="Video sections">
+      <a href="#diagnostic-set">Diagnostic set</a>
+      <a href="#result-selected-routes">Result-selected routes</a>
+      <a href="https://github.com/hdezerto/simlingo-thesis">Repository</a>
+    </nav>
+    <div class="summary-row" aria-label="Video counts">
+      <span>6 diagnostic routes</span>
+      <span>36 diagnostic videos</span>
+      <span>11 result-selected routes</span>
+      <span>23 unique result-selected videos</span>
+    </div>
+    <p class="note-box snapshot-key">Yellow route panels mark routes used for Chapter 6 snapshot comparisons. Snapshot tags on video cards identify the exact Chapter 3 or Chapter 6 figure source.</p>
+    <p class="note-box">All renders are seed-1 qualitative videos. Notes under each player describe what is visible in that specific render; aggregate metrics are reported in the thesis.</p>
   </header>
+
   <main>
-<section>
-  <h2>Diagnostic Set</h2>
-  <p>Diagnostic routes discussed in Chapter 3 and revisited in Chapter 6.</p>
-  <div class="grid">
-<article class="video-card">
-  <h3>Route 3373 - Baseline</h3>
-  <p class="meta">Baseline · 11.3 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/baseline/RouteScenario_3373_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/baseline/RouteScenario_3373_seed1_rep0.mp4">diagnostic_set/baseline/RouteScenario_3373_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 3373 - Delta fresh-LoRA</h3>
-  <p class="meta">Delta fresh-LoRA · 11.8 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/delta_fresh_lora/RouteScenario_3373_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/delta_fresh_lora/RouteScenario_3373_seed1_rep0.mp4">diagnostic_set/delta_fresh_lora/RouteScenario_3373_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 3373 - No-temporal control</h3>
-  <p class="meta">No-temporal control · 4.9 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/qformer_no_temporal/RouteScenario_3373_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/qformer_no_temporal/RouteScenario_3373_seed1_rep0.mp4">diagnostic_set/qformer_no_temporal/RouteScenario_3373_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 3373 - Q-former fresh-LoRA</h3>
-  <p class="meta">Q-former fresh-LoRA · 12.2 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/qformer_fresh_lora/RouteScenario_3373_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/qformer_fresh_lora/RouteScenario_3373_seed1_rep0.mp4">diagnostic_set/qformer_fresh_lora/RouteScenario_3373_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 3373 - Q-former loaded-LoRA diagnostic</h3>
-  <p class="meta">Q-former loaded-LoRA diagnostic · 5.0 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/qformer_loaded_lora/RouteScenario_3373_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/qformer_loaded_lora/RouteScenario_3373_seed1_rep0.mp4">diagnostic_set/qformer_loaded_lora/RouteScenario_3373_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 3373 - Q-former repeated-current</h3>
-  <p class="meta">Q-former repeated-current · 17.2 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/qformer_repeated_current/RouteScenario_3373_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/qformer_repeated_current/RouteScenario_3373_seed1_rep0.mp4">diagnostic_set/qformer_repeated_current/RouteScenario_3373_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 3936 - Baseline</h3>
-  <p class="meta">Baseline · 21.9 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/baseline/RouteScenario_3936_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/baseline/RouteScenario_3936_seed1_rep0.mp4">diagnostic_set/baseline/RouteScenario_3936_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 3936 - Delta fresh-LoRA</h3>
-  <p class="meta">Delta fresh-LoRA · 10.3 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/delta_fresh_lora/RouteScenario_3936_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/delta_fresh_lora/RouteScenario_3936_seed1_rep0.mp4">diagnostic_set/delta_fresh_lora/RouteScenario_3936_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 3936 - No-temporal control</h3>
-  <p class="meta">No-temporal control · 10.3 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/qformer_no_temporal/RouteScenario_3936_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/qformer_no_temporal/RouteScenario_3936_seed1_rep0.mp4">diagnostic_set/qformer_no_temporal/RouteScenario_3936_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 3936 - Q-former fresh-LoRA</h3>
-  <p class="meta">Q-former fresh-LoRA · 9.7 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/qformer_fresh_lora/RouteScenario_3936_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/qformer_fresh_lora/RouteScenario_3936_seed1_rep0.mp4">diagnostic_set/qformer_fresh_lora/RouteScenario_3936_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 3936 - Q-former loaded-LoRA diagnostic</h3>
-  <p class="meta">Q-former loaded-LoRA diagnostic · 9.9 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/qformer_loaded_lora/RouteScenario_3936_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/qformer_loaded_lora/RouteScenario_3936_seed1_rep0.mp4">diagnostic_set/qformer_loaded_lora/RouteScenario_3936_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 3936 - Q-former repeated-current</h3>
-  <p class="meta">Q-former repeated-current · 10.4 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/qformer_repeated_current/RouteScenario_3936_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/qformer_repeated_current/RouteScenario_3936_seed1_rep0.mp4">diagnostic_set/qformer_repeated_current/RouteScenario_3936_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 4183 - Baseline</h3>
-  <p class="meta">Baseline · 19.1 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/baseline/RouteScenario_4183_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/baseline/RouteScenario_4183_seed1_rep0.mp4">diagnostic_set/baseline/RouteScenario_4183_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 4183 - Delta fresh-LoRA</h3>
-  <p class="meta">Delta fresh-LoRA · 7.8 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/delta_fresh_lora/RouteScenario_4183_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/delta_fresh_lora/RouteScenario_4183_seed1_rep0.mp4">diagnostic_set/delta_fresh_lora/RouteScenario_4183_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 4183 - No-temporal control</h3>
-  <p class="meta">No-temporal control · 10.1 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/qformer_no_temporal/RouteScenario_4183_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/qformer_no_temporal/RouteScenario_4183_seed1_rep0.mp4">diagnostic_set/qformer_no_temporal/RouteScenario_4183_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 4183 - Q-former fresh-LoRA</h3>
-  <p class="meta">Q-former fresh-LoRA · 17.1 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/qformer_fresh_lora/RouteScenario_4183_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/qformer_fresh_lora/RouteScenario_4183_seed1_rep0.mp4">diagnostic_set/qformer_fresh_lora/RouteScenario_4183_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 4183 - Q-former loaded-LoRA diagnostic</h3>
-  <p class="meta">Q-former loaded-LoRA diagnostic · 22.5 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/qformer_loaded_lora/RouteScenario_4183_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/qformer_loaded_lora/RouteScenario_4183_seed1_rep0.mp4">diagnostic_set/qformer_loaded_lora/RouteScenario_4183_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 4183 - Q-former repeated-current</h3>
-  <p class="meta">Q-former repeated-current · 7.1 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/qformer_repeated_current/RouteScenario_4183_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/qformer_repeated_current/RouteScenario_4183_seed1_rep0.mp4">diagnostic_set/qformer_repeated_current/RouteScenario_4183_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 4468 - Baseline</h3>
-  <p class="meta">Baseline · 11.1 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/baseline/RouteScenario_4468_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/baseline/RouteScenario_4468_seed1_rep0.mp4">diagnostic_set/baseline/RouteScenario_4468_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 4468 - Delta fresh-LoRA</h3>
-  <p class="meta">Delta fresh-LoRA · 11.3 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/delta_fresh_lora/RouteScenario_4468_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/delta_fresh_lora/RouteScenario_4468_seed1_rep0.mp4">diagnostic_set/delta_fresh_lora/RouteScenario_4468_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 4468 - No-temporal control</h3>
-  <p class="meta">No-temporal control · 10.9 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/qformer_no_temporal/RouteScenario_4468_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/qformer_no_temporal/RouteScenario_4468_seed1_rep0.mp4">diagnostic_set/qformer_no_temporal/RouteScenario_4468_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 4468 - Q-former fresh-LoRA</h3>
-  <p class="meta">Q-former fresh-LoRA · 18.7 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/qformer_fresh_lora/RouteScenario_4468_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/qformer_fresh_lora/RouteScenario_4468_seed1_rep0.mp4">diagnostic_set/qformer_fresh_lora/RouteScenario_4468_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 4468 - Q-former loaded-LoRA diagnostic</h3>
-  <p class="meta">Q-former loaded-LoRA diagnostic · 18.9 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/qformer_loaded_lora/RouteScenario_4468_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/qformer_loaded_lora/RouteScenario_4468_seed1_rep0.mp4">diagnostic_set/qformer_loaded_lora/RouteScenario_4468_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 4468 - Q-former repeated-current</h3>
-  <p class="meta">Q-former repeated-current · 11.4 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/qformer_repeated_current/RouteScenario_4468_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/qformer_repeated_current/RouteScenario_4468_seed1_rep0.mp4">diagnostic_set/qformer_repeated_current/RouteScenario_4468_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 4683 - Baseline</h3>
-  <p class="meta">Baseline · 12.9 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/baseline/RouteScenario_4683_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/baseline/RouteScenario_4683_seed1_rep0.mp4">diagnostic_set/baseline/RouteScenario_4683_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 4683 - Delta fresh-LoRA</h3>
-  <p class="meta">Delta fresh-LoRA · 6.9 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/delta_fresh_lora/RouteScenario_4683_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/delta_fresh_lora/RouteScenario_4683_seed1_rep0.mp4">diagnostic_set/delta_fresh_lora/RouteScenario_4683_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 4683 - No-temporal control</h3>
-  <p class="meta">No-temporal control · 7.1 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/qformer_no_temporal/RouteScenario_4683_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/qformer_no_temporal/RouteScenario_4683_seed1_rep0.mp4">diagnostic_set/qformer_no_temporal/RouteScenario_4683_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 4683 - Q-former fresh-LoRA</h3>
-  <p class="meta">Q-former fresh-LoRA · 12.9 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/qformer_fresh_lora/RouteScenario_4683_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/qformer_fresh_lora/RouteScenario_4683_seed1_rep0.mp4">diagnostic_set/qformer_fresh_lora/RouteScenario_4683_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 4683 - Q-former loaded-LoRA diagnostic</h3>
-  <p class="meta">Q-former loaded-LoRA diagnostic · 6.7 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/qformer_loaded_lora/RouteScenario_4683_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/qformer_loaded_lora/RouteScenario_4683_seed1_rep0.mp4">diagnostic_set/qformer_loaded_lora/RouteScenario_4683_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 4683 - Q-former repeated-current</h3>
-  <p class="meta">Q-former repeated-current · 6.5 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/qformer_repeated_current/RouteScenario_4683_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/qformer_repeated_current/RouteScenario_4683_seed1_rep0.mp4">diagnostic_set/qformer_repeated_current/RouteScenario_4683_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 11755 - Baseline</h3>
-  <p class="meta">Baseline · 13.5 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/baseline/RouteScenario_11755_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/baseline/RouteScenario_11755_seed1_rep0.mp4">diagnostic_set/baseline/RouteScenario_11755_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 11755 - Delta fresh-LoRA</h3>
-  <p class="meta">Delta fresh-LoRA · 17.4 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/delta_fresh_lora/RouteScenario_11755_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/delta_fresh_lora/RouteScenario_11755_seed1_rep0.mp4">diagnostic_set/delta_fresh_lora/RouteScenario_11755_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 11755 - No-temporal control</h3>
-  <p class="meta">No-temporal control · 16.7 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/qformer_no_temporal/RouteScenario_11755_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/qformer_no_temporal/RouteScenario_11755_seed1_rep0.mp4">diagnostic_set/qformer_no_temporal/RouteScenario_11755_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 11755 - Q-former fresh-LoRA</h3>
-  <p class="meta">Q-former fresh-LoRA · 14.0 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/qformer_fresh_lora/RouteScenario_11755_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/qformer_fresh_lora/RouteScenario_11755_seed1_rep0.mp4">diagnostic_set/qformer_fresh_lora/RouteScenario_11755_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 11755 - Q-former loaded-LoRA diagnostic</h3>
-  <p class="meta">Q-former loaded-LoRA diagnostic · 13.4 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/qformer_loaded_lora/RouteScenario_11755_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/qformer_loaded_lora/RouteScenario_11755_seed1_rep0.mp4">diagnostic_set/qformer_loaded_lora/RouteScenario_11755_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 11755 - Q-former repeated-current</h3>
-  <p class="meta">Q-former repeated-current · 14.0 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="diagnostic_set/qformer_repeated_current/RouteScenario_11755_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="diagnostic_set/qformer_repeated_current/RouteScenario_11755_seed1_rep0.mp4">diagnostic_set/qformer_repeated_current/RouteScenario_11755_seed1_rep0.mp4</a></p>
-</article>
-  </div>
-</section>
-<section>
-  <h2>Result-Selected Routes</h2>
-  <p>Routes selected from the scenario-level comparison in Chapter 6.</p>
-  <div class="grid">
-<article class="video-card">
-  <h3>Route 2084 - Baseline</h3>
-  <p class="meta">Baseline · 4.2 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="result_selected/baseline/RouteScenario_2084_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="result_selected/baseline/RouteScenario_2084_seed1_rep0.mp4">result_selected/baseline/RouteScenario_2084_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 2084 - Q-former fresh-LoRA</h3>
-  <p class="meta">Q-former fresh-LoRA · 4.9 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="result_selected/qformer_fresh_lora/RouteScenario_2084_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="result_selected/qformer_fresh_lora/RouteScenario_2084_seed1_rep0.mp4">result_selected/qformer_fresh_lora/RouteScenario_2084_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 3464 - Baseline</h3>
-  <p class="meta">Baseline · 4.4 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="result_selected/baseline/RouteScenario_3464_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="result_selected/baseline/RouteScenario_3464_seed1_rep0.mp4">result_selected/baseline/RouteScenario_3464_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 3464 - Delta fresh-LoRA</h3>
-  <p class="meta">Delta fresh-LoRA · 34.7 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="result_selected/delta_fresh_lora/RouteScenario_3464_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="result_selected/delta_fresh_lora/RouteScenario_3464_seed1_rep0.mp4">result_selected/delta_fresh_lora/RouteScenario_3464_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 17569 - Baseline</h3>
-  <p class="meta">Baseline · 25.3 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="result_selected/baseline/RouteScenario_17569_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="result_selected/baseline/RouteScenario_17569_seed1_rep0.mp4">result_selected/baseline/RouteScenario_17569_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 17569 - Q-former fresh-LoRA</h3>
-  <p class="meta">Q-former fresh-LoRA · 24.6 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="result_selected/qformer_fresh_lora/RouteScenario_17569_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="result_selected/qformer_fresh_lora/RouteScenario_17569_seed1_rep0.mp4">result_selected/qformer_fresh_lora/RouteScenario_17569_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 24294 - Baseline</h3>
-  <p class="meta">Baseline · 13.7 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="result_selected/baseline/RouteScenario_24294_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="result_selected/baseline/RouteScenario_24294_seed1_rep0.mp4">result_selected/baseline/RouteScenario_24294_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 24294 - Q-former fresh-LoRA</h3>
-  <p class="meta">Q-former fresh-LoRA · 10.5 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="result_selected/qformer_fresh_lora/RouteScenario_24294_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="result_selected/qformer_fresh_lora/RouteScenario_24294_seed1_rep0.mp4">result_selected/qformer_fresh_lora/RouteScenario_24294_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 25318 - Baseline</h3>
-  <p class="meta">Baseline · 37.4 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="result_selected/baseline/RouteScenario_25318_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="result_selected/baseline/RouteScenario_25318_seed1_rep0.mp4">result_selected/baseline/RouteScenario_25318_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 25318 - Q-former fresh-LoRA</h3>
-  <p class="meta">Q-former fresh-LoRA · 1.8 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="result_selected/qformer_fresh_lora/RouteScenario_25318_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="result_selected/qformer_fresh_lora/RouteScenario_25318_seed1_rep0.mp4">result_selected/qformer_fresh_lora/RouteScenario_25318_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 25383 - Baseline</h3>
-  <p class="meta">Baseline · 5.4 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="result_selected/baseline/RouteScenario_25383_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="result_selected/baseline/RouteScenario_25383_seed1_rep0.mp4">result_selected/baseline/RouteScenario_25383_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 25383 - Delta fresh-LoRA</h3>
-  <p class="meta">Delta fresh-LoRA · 24.4 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="result_selected/delta_fresh_lora/RouteScenario_25383_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="result_selected/delta_fresh_lora/RouteScenario_25383_seed1_rep0.mp4">result_selected/delta_fresh_lora/RouteScenario_25383_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 26393 - Baseline</h3>
-  <p class="meta">Baseline · 6.1 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="result_selected/baseline/RouteScenario_26393_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="result_selected/baseline/RouteScenario_26393_seed1_rep0.mp4">result_selected/baseline/RouteScenario_26393_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 26393 - Delta fresh-LoRA</h3>
-  <p class="meta">Delta fresh-LoRA · 5.6 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="result_selected/delta_fresh_lora/RouteScenario_26393_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="result_selected/delta_fresh_lora/RouteScenario_26393_seed1_rep0.mp4">result_selected/delta_fresh_lora/RouteScenario_26393_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 26401 - Baseline</h3>
-  <p class="meta">Baseline · 25.9 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="result_selected/baseline/RouteScenario_26401_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="result_selected/baseline/RouteScenario_26401_seed1_rep0.mp4">result_selected/baseline/RouteScenario_26401_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 26401 - Delta fresh-LoRA</h3>
-  <p class="meta">Delta fresh-LoRA · 2.3 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="result_selected/delta_fresh_lora/RouteScenario_26401_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="result_selected/delta_fresh_lora/RouteScenario_26401_seed1_rep0.mp4">result_selected/delta_fresh_lora/RouteScenario_26401_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 27532 - Baseline</h3>
-  <p class="meta">Baseline · 7.1 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="result_selected/baseline/RouteScenario_27532_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="result_selected/baseline/RouteScenario_27532_seed1_rep0.mp4">result_selected/baseline/RouteScenario_27532_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 27532 - Delta fresh-LoRA</h3>
-  <p class="meta">Delta fresh-LoRA · 15.3 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="result_selected/delta_fresh_lora/RouteScenario_27532_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="result_selected/delta_fresh_lora/RouteScenario_27532_seed1_rep0.mp4">result_selected/delta_fresh_lora/RouteScenario_27532_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 27532 - Q-former fresh-LoRA</h3>
-  <p class="meta">Q-former fresh-LoRA · 9.6 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="result_selected/qformer_fresh_lora/RouteScenario_27532_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="result_selected/qformer_fresh_lora/RouteScenario_27532_seed1_rep0.mp4">result_selected/qformer_fresh_lora/RouteScenario_27532_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 27582 - Baseline</h3>
-  <p class="meta">Baseline · 7.9 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="result_selected/baseline/RouteScenario_27582_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="result_selected/baseline/RouteScenario_27582_seed1_rep0.mp4">result_selected/baseline/RouteScenario_27582_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 27582 - Delta fresh-LoRA</h3>
-  <p class="meta">Delta fresh-LoRA · 8.2 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="result_selected/delta_fresh_lora/RouteScenario_27582_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="result_selected/delta_fresh_lora/RouteScenario_27582_seed1_rep0.mp4">result_selected/delta_fresh_lora/RouteScenario_27582_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 28243 - Baseline</h3>
-  <p class="meta">Baseline · 14.2 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="result_selected/baseline/RouteScenario_28243_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="result_selected/baseline/RouteScenario_28243_seed1_rep0.mp4">result_selected/baseline/RouteScenario_28243_seed1_rep0.mp4</a></p>
-</article>
-<article class="video-card">
-  <h3>Route 28243 - Q-former fresh-LoRA</h3>
-  <p class="meta">Q-former fresh-LoRA · 12.6 MiB</p>
-  <video controls preload="metadata" playsinline>
-    <source src="result_selected/qformer_fresh_lora/RouteScenario_28243_seed1_rep0.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <p class="path"><a href="result_selected/qformer_fresh_lora/RouteScenario_28243_seed1_rep0.mp4">result_selected/qformer_fresh_lora/RouteScenario_28243_seed1_rep0.mp4</a></p>
-</article>
-  </div>
-</section>
+    <section id="diagnostic-set">
+      <h2>Diagnostic Set</h2>
+      <p>Routes used to inspect the original baseline failure modes and the temporal controls. The temporal variants reduce stale baseline commentary in these renders, although occasional object hallucinations can remain.</p>
+      <div class="route-list">
+      <details class="route-group" open>
+        <summary>
+          <span class="route-title">
+            <span>Route 3373</span>
+            <small>Boundary emergency-vehicle case; relevant evidence is outside the front-camera history.</small>
+          </span>
+          <span class="video-count">6 videos</span>
+        </summary>
+        <div class="variant-chips" aria-label="Available variants">
+          <span>Baseline</span>
+          <span>Q-former fresh-LoRA</span>
+          <span>Delta fresh-LoRA</span>
+          <span>No-temporal control</span>
+          <span>Q-former repeated-current</span>
+          <span>Q-former loaded-LoRA diagnostic</span>
+        </div>
+        <div class="video-grid">
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Baseline</h3>
+              <span>11.3 MiB</span>
+            </div>
+            <p class="snapshot-tags"><span class="snapshot-tag chapter-3">Chapter 3 snapshot</span></p>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/baseline/RouteScenario_3373_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Matches the baseline diagnostic behavior discussed in the report.</p>
+            <p class="mp4-link"><a href="diagnostic_set/baseline/RouteScenario_3373_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Q-former fresh-LoRA</h3>
+              <span>12.2 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/qformer_fresh_lora/RouteScenario_3373_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Similar visible behavior to the baseline in this limited-view case.</p>
+            <p class="mp4-link"><a href="diagnostic_set/qformer_fresh_lora/RouteScenario_3373_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Delta fresh-LoRA</h3>
+              <span>11.8 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/delta_fresh_lora/RouteScenario_3373_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Similar visible behavior to the baseline in this limited-view case.</p>
+            <p class="mp4-link"><a href="diagnostic_set/delta_fresh_lora/RouteScenario_3373_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>No-temporal control</h3>
+              <span>4.9 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/qformer_no_temporal/RouteScenario_3373_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Stops for a long time and later shows erratic behavior with collisions.</p>
+            <p class="mp4-link"><a href="diagnostic_set/qformer_no_temporal/RouteScenario_3373_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Q-former repeated-current</h3>
+              <span>17.2 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/qformer_repeated_current/RouteScenario_3373_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Stops for a long time and later shows unsafe, erratic driving behavior.</p>
+            <p class="mp4-link"><a href="diagnostic_set/qformer_repeated_current/RouteScenario_3373_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Q-former loaded-LoRA diagnostic</h3>
+              <span>5.0 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/qformer_loaded_lora/RouteScenario_3373_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Stops for a long time and later shows unsafe, erratic driving behavior.</p>
+            <p class="mp4-link"><a href="diagnostic_set/qformer_loaded_lora/RouteScenario_3373_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+        </div>
+      </details>
+      <details class="route-group">
+        <summary>
+          <span class="route-title">
+            <span>Route 3936</span>
+            <small>Diagnostic left-turn route used to inspect interaction timing.</small>
+          </span>
+          <span class="video-count">6 videos</span>
+        </summary>
+        <div class="variant-chips" aria-label="Available variants">
+          <span>Baseline</span>
+          <span>Q-former fresh-LoRA</span>
+          <span>Delta fresh-LoRA</span>
+          <span>No-temporal control</span>
+          <span>Q-former repeated-current</span>
+          <span>Q-former loaded-LoRA diagnostic</span>
+        </div>
+        <div class="video-grid">
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Baseline</h3>
+              <span>21.9 MiB</span>
+            </div>
+            <p class="snapshot-tags"><span class="snapshot-tag chapter-3">Chapter 3 snapshot</span></p>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/baseline/RouteScenario_3936_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Matches the baseline diagnostic behavior discussed in the report.</p>
+            <p class="mp4-link"><a href="diagnostic_set/baseline/RouteScenario_3936_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Q-former fresh-LoRA</h3>
+              <span>9.7 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/qformer_fresh_lora/RouteScenario_3936_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Turns late; only slight rear contact is observed instead of a frontal or lateral collision.</p>
+            <p class="mp4-link"><a href="diagnostic_set/qformer_fresh_lora/RouteScenario_3936_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Delta fresh-LoRA</h3>
+              <span>10.3 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/delta_fresh_lora/RouteScenario_3936_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Times out in the selected render.</p>
+            <p class="mp4-link"><a href="diagnostic_set/delta_fresh_lora/RouteScenario_3936_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>No-temporal control</h3>
+              <span>10.3 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/qformer_no_temporal/RouteScenario_3936_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Times out in the selected render.</p>
+            <p class="mp4-link"><a href="diagnostic_set/qformer_no_temporal/RouteScenario_3936_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Q-former repeated-current</h3>
+              <span>10.4 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/qformer_repeated_current/RouteScenario_3936_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Times out in the selected render.</p>
+            <p class="mp4-link"><a href="diagnostic_set/qformer_repeated_current/RouteScenario_3936_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Q-former loaded-LoRA diagnostic</h3>
+              <span>9.9 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/qformer_loaded_lora/RouteScenario_3936_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Takes too long to turn and times out.</p>
+            <p class="mp4-link"><a href="diagnostic_set/qformer_loaded_lora/RouteScenario_3936_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+        </div>
+      </details>
+      <details class="route-group featured">
+        <summary>
+          <span class="route-title">
+            <span>Route 4183</span>
+            <small>Diagnostic left-turn route used for the report snapshot comparison.</small>
+          </span>
+          <span class="video-count">6 videos</span>
+        </summary>
+        <div class="variant-chips" aria-label="Available variants">
+          <span>Baseline</span>
+          <span>Q-former fresh-LoRA</span>
+          <span>Delta fresh-LoRA</span>
+          <span>No-temporal control</span>
+          <span>Q-former repeated-current</span>
+          <span>Q-former loaded-LoRA diagnostic</span>
+        </div>
+        <div class="video-grid">
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Baseline</h3>
+              <span>19.1 MiB</span>
+            </div>
+            <p class="snapshot-tags"><span class="snapshot-tag chapter-3">Chapter 3 snapshot</span></p>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/baseline/RouteScenario_4183_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Matches the baseline diagnostic behavior discussed in the report.</p>
+            <p class="mp4-link"><a href="diagnostic_set/baseline/RouteScenario_4183_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Q-former fresh-LoRA</h3>
+              <span>17.1 MiB</span>
+            </div>
+            <p class="snapshot-tags"><span class="snapshot-tag chapter-6">Chapter 6 snapshot</span></p>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/qformer_fresh_lora/RouteScenario_4183_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Completes the left turn with only slight rear contact observed, with no lateral collision.</p>
+            <p class="mp4-link"><a href="diagnostic_set/qformer_fresh_lora/RouteScenario_4183_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Delta fresh-LoRA</h3>
+              <span>7.8 MiB</span>
+            </div>
+            <p class="snapshot-tags"><span class="snapshot-tag chapter-6">Chapter 6 snapshot</span></p>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/delta_fresh_lora/RouteScenario_4183_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Frontal collision with the opposing vehicle.</p>
+            <p class="mp4-link"><a href="diagnostic_set/delta_fresh_lora/RouteScenario_4183_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>No-temporal control</h3>
+              <span>10.1 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/qformer_no_temporal/RouteScenario_4183_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Frontal collision with a vehicle in the opposite lane.</p>
+            <p class="mp4-link"><a href="diagnostic_set/qformer_no_temporal/RouteScenario_4183_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Q-former repeated-current</h3>
+              <span>7.1 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/qformer_repeated_current/RouteScenario_4183_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Frontal collision with a vehicle in the opposite lane.</p>
+            <p class="mp4-link"><a href="diagnostic_set/qformer_repeated_current/RouteScenario_4183_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Q-former loaded-LoRA diagnostic</h3>
+              <span>22.5 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/qformer_loaded_lora/RouteScenario_4183_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Lateral collision during the turn.</p>
+            <p class="mp4-link"><a href="diagnostic_set/qformer_loaded_lora/RouteScenario_4183_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+        </div>
+      </details>
+      <details class="route-group">
+        <summary>
+          <span class="route-title">
+            <span>Route 4468</span>
+            <small>Diagnostic left-turn route with behavior similar to route 4183.</small>
+          </span>
+          <span class="video-count">6 videos</span>
+        </summary>
+        <div class="variant-chips" aria-label="Available variants">
+          <span>Baseline</span>
+          <span>Q-former fresh-LoRA</span>
+          <span>Delta fresh-LoRA</span>
+          <span>No-temporal control</span>
+          <span>Q-former repeated-current</span>
+          <span>Q-former loaded-LoRA diagnostic</span>
+        </div>
+        <div class="video-grid">
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Baseline</h3>
+              <span>11.1 MiB</span>
+            </div>
+            <p class="snapshot-tags"><span class="snapshot-tag chapter-3">Chapter 3 snapshot</span></p>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/baseline/RouteScenario_4468_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Matches the baseline diagnostic behavior discussed in the report.</p>
+            <p class="mp4-link"><a href="diagnostic_set/baseline/RouteScenario_4468_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Q-former fresh-LoRA</h3>
+              <span>18.7 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/qformer_fresh_lora/RouteScenario_4468_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Similar to route 4183: rear contact rather than a severe frontal or lateral collision.</p>
+            <p class="mp4-link"><a href="diagnostic_set/qformer_fresh_lora/RouteScenario_4468_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Delta fresh-LoRA</h3>
+              <span>11.3 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/delta_fresh_lora/RouteScenario_4468_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Frontal collision with the opposing vehicle, similar to route 4183.</p>
+            <p class="mp4-link"><a href="diagnostic_set/delta_fresh_lora/RouteScenario_4468_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>No-temporal control</h3>
+              <span>10.9 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/qformer_no_temporal/RouteScenario_4468_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Frontal collision with a vehicle in the opposite lane.</p>
+            <p class="mp4-link"><a href="diagnostic_set/qformer_no_temporal/RouteScenario_4468_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Q-former repeated-current</h3>
+              <span>11.4 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/qformer_repeated_current/RouteScenario_4468_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Frontal collision with a vehicle in the opposite lane.</p>
+            <p class="mp4-link"><a href="diagnostic_set/qformer_repeated_current/RouteScenario_4468_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Q-former loaded-LoRA diagnostic</h3>
+              <span>18.9 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/qformer_loaded_lora/RouteScenario_4468_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Lateral collision during the turn.</p>
+            <p class="mp4-link"><a href="diagnostic_set/qformer_loaded_lora/RouteScenario_4468_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+        </div>
+      </details>
+      <details class="route-group">
+        <summary>
+          <span class="route-title">
+            <span>Route 4683</span>
+            <small>Diagnostic left-turn route with behavior similar to route 4183.</small>
+          </span>
+          <span class="video-count">6 videos</span>
+        </summary>
+        <div class="variant-chips" aria-label="Available variants">
+          <span>Baseline</span>
+          <span>Q-former fresh-LoRA</span>
+          <span>Delta fresh-LoRA</span>
+          <span>No-temporal control</span>
+          <span>Q-former repeated-current</span>
+          <span>Q-former loaded-LoRA diagnostic</span>
+        </div>
+        <div class="video-grid">
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Baseline</h3>
+              <span>12.9 MiB</span>
+            </div>
+            <p class="snapshot-tags"><span class="snapshot-tag chapter-3">Chapter 3 snapshot</span></p>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/baseline/RouteScenario_4683_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Matches the baseline diagnostic behavior discussed in the report.</p>
+            <p class="mp4-link"><a href="diagnostic_set/baseline/RouteScenario_4683_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Q-former fresh-LoRA</h3>
+              <span>12.9 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/qformer_fresh_lora/RouteScenario_4683_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Similar to route 4183: rear contact rather than a severe frontal or lateral collision.</p>
+            <p class="mp4-link"><a href="diagnostic_set/qformer_fresh_lora/RouteScenario_4683_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Delta fresh-LoRA</h3>
+              <span>6.9 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/delta_fresh_lora/RouteScenario_4683_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Frontal collision with the opposing vehicle, similar to route 4183.</p>
+            <p class="mp4-link"><a href="diagnostic_set/delta_fresh_lora/RouteScenario_4683_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>No-temporal control</h3>
+              <span>7.1 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/qformer_no_temporal/RouteScenario_4683_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Frontal collision with a vehicle in the opposite lane.</p>
+            <p class="mp4-link"><a href="diagnostic_set/qformer_no_temporal/RouteScenario_4683_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Q-former repeated-current</h3>
+              <span>6.5 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/qformer_repeated_current/RouteScenario_4683_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Frontal collision with a vehicle in the opposite lane.</p>
+            <p class="mp4-link"><a href="diagnostic_set/qformer_repeated_current/RouteScenario_4683_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Q-former loaded-LoRA diagnostic</h3>
+              <span>6.7 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/qformer_loaded_lora/RouteScenario_4683_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Lateral collision during the turn.</p>
+            <p class="mp4-link"><a href="diagnostic_set/qformer_loaded_lora/RouteScenario_4683_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+        </div>
+      </details>
+      <details class="route-group">
+        <summary>
+          <span class="route-title">
+            <span>Route 11755</span>
+            <small>Boundary actor-flow case where front-camera history alone is not expected to solve the issue.</small>
+          </span>
+          <span class="video-count">6 videos</span>
+        </summary>
+        <div class="variant-chips" aria-label="Available variants">
+          <span>Baseline</span>
+          <span>Q-former fresh-LoRA</span>
+          <span>Delta fresh-LoRA</span>
+          <span>No-temporal control</span>
+          <span>Q-former repeated-current</span>
+          <span>Q-former loaded-LoRA diagnostic</span>
+        </div>
+        <div class="video-grid">
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Baseline</h3>
+              <span>13.5 MiB</span>
+            </div>
+            <p class="snapshot-tags"><span class="snapshot-tag chapter-3">Chapter 3 snapshot</span></p>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/baseline/RouteScenario_11755_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Matches the baseline diagnostic behavior discussed in the report.</p>
+            <p class="mp4-link"><a href="diagnostic_set/baseline/RouteScenario_11755_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Q-former fresh-LoRA</h3>
+              <span>14.0 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/qformer_fresh_lora/RouteScenario_11755_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Similar visible behavior to the baseline.</p>
+            <p class="mp4-link"><a href="diagnostic_set/qformer_fresh_lora/RouteScenario_11755_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Delta fresh-LoRA</h3>
+              <span>17.4 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/delta_fresh_lora/RouteScenario_11755_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Similar visible behavior to the baseline.</p>
+            <p class="mp4-link"><a href="diagnostic_set/delta_fresh_lora/RouteScenario_11755_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>No-temporal control</h3>
+              <span>16.7 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/qformer_no_temporal/RouteScenario_11755_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Similar visible behavior to the baseline.</p>
+            <p class="mp4-link"><a href="diagnostic_set/qformer_no_temporal/RouteScenario_11755_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Q-former repeated-current</h3>
+              <span>14.0 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/qformer_repeated_current/RouteScenario_11755_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Similar visible behavior to the baseline.</p>
+            <p class="mp4-link"><a href="diagnostic_set/qformer_repeated_current/RouteScenario_11755_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Q-former loaded-LoRA diagnostic</h3>
+              <span>13.4 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="diagnostic_set/qformer_loaded_lora/RouteScenario_11755_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Similar visible behavior to the baseline.</p>
+            <p class="mp4-link"><a href="diagnostic_set/qformer_loaded_lora/RouteScenario_11755_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+        </div>
+      </details>
+      </div>
+    </section>
+
+    <section id="result-selected-routes">
+      <h2>Result-Selected Routes</h2>
+      <p>Routes selected from the route-level comparison in the results. Cards corresponding to static snapshots in Chapters 3 and 6 are tagged on the specific variant video. The shared route 27532 appears in both groups so each comparison is self-contained.</p>
+
+      <div class="adapter-block" id="q-former-result-selected">
+        <h3>Q-former</h3>
+        <p>Baseline versus the fresh-LoRA Q-former on routes selected from Q-former improvements and regressions.</p>
+        <div class="route-list">
+      <details class="route-group featured" open>
+        <summary>
+          <span class="route-title">
+            <span>Route 27532</span>
+            <small>Shared blocked-intersection improvement example.</small>
+          </span>
+          <span class="video-count">2 videos</span>
+        </summary>
+        <div class="variant-chips" aria-label="Available variants">
+          <span>Baseline</span>
+          <span>Q-former fresh-LoRA</span>
+        </div>
+        <div class="video-grid">
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Baseline</h3>
+              <span>7.1 MiB</span>
+            </div>
+            <p class="snapshot-tags"><span class="snapshot-tag chapter-6">Chapter 6 snapshot</span></p>
+            <video controls preload="metadata" playsinline>
+              <source src="result_selected/baseline/RouteScenario_27532_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Collides with the vehicle in front.</p>
+            <p class="mp4-link"><a href="result_selected/baseline/RouteScenario_27532_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Q-former fresh-LoRA</h3>
+              <span>9.6 MiB</span>
+            </div>
+            <p class="snapshot-tags"><span class="snapshot-tag chapter-6">Chapter 6 snapshot</span></p>
+            <video controls preload="metadata" playsinline>
+              <source src="result_selected/qformer_fresh_lora/RouteScenario_27532_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Waits and avoids the baseline collision.</p>
+            <p class="mp4-link"><a href="result_selected/qformer_fresh_lora/RouteScenario_27532_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+        </div>
+      </details>
+      <details class="route-group">
+        <summary>
+          <span class="route-title">
+            <span>Route 25318</span>
+            <small>Aggregate Q-former parked-obstacle improvement candidate.</small>
+          </span>
+          <span class="video-count">2 videos</span>
+        </summary>
+        <div class="variant-chips" aria-label="Available variants">
+          <span>Baseline</span>
+          <span>Q-former fresh-LoRA</span>
+        </div>
+        <div class="video-grid">
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Baseline</h3>
+              <span>37.4 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="result_selected/baseline/RouteScenario_25318_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">No visible failure observed in the seed-1 render.</p>
+            <p class="mp4-link"><a href="result_selected/baseline/RouteScenario_25318_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Q-former fresh-LoRA</h3>
+              <span>1.8 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="result_selected/qformer_fresh_lora/RouteScenario_25318_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">No visible failure observed in the seed-1 render.</p>
+            <p class="mp4-link"><a href="result_selected/qformer_fresh_lora/RouteScenario_25318_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+        </div>
+      </details>
+      <details class="route-group">
+        <summary>
+          <span class="route-title">
+            <span>Route 17569</span>
+            <small>Aggregate Q-former lane-change improvement candidate.</small>
+          </span>
+          <span class="video-count">2 videos</span>
+        </summary>
+        <div class="variant-chips" aria-label="Available variants">
+          <span>Baseline</span>
+          <span>Q-former fresh-LoRA</span>
+        </div>
+        <div class="video-grid">
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Baseline</h3>
+              <span>25.3 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="result_selected/baseline/RouteScenario_17569_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Attempts a lane change and later collides laterally with the vehicle on the left.</p>
+            <p class="mp4-link"><a href="result_selected/baseline/RouteScenario_17569_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Q-former fresh-LoRA</h3>
+              <span>24.6 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="result_selected/qformer_fresh_lora/RouteScenario_17569_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Avoids the baseline lane-change collision.</p>
+            <p class="mp4-link"><a href="result_selected/qformer_fresh_lora/RouteScenario_17569_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+        </div>
+      </details>
+      <details class="route-group">
+        <summary>
+          <span class="route-title">
+            <span>Route 2084</span>
+            <small>Aggregate Q-former junction regression candidate; seed-1 render mainly illustrates commentary behavior.</small>
+          </span>
+          <span class="video-count">2 videos</span>
+        </summary>
+        <div class="variant-chips" aria-label="Available variants">
+          <span>Baseline</span>
+          <span>Q-former fresh-LoRA</span>
+        </div>
+        <div class="video-grid">
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Baseline</h3>
+              <span>4.2 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="result_selected/baseline/RouteScenario_2084_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">No visible failure observed in the seed-1 render.</p>
+            <p class="mp4-link"><a href="result_selected/baseline/RouteScenario_2084_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Q-former fresh-LoRA</h3>
+              <span>4.9 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="result_selected/qformer_fresh_lora/RouteScenario_2084_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Driving behavior appears reasonable, but useful stop-sign reasoning is no longer stated.</p>
+            <p class="mp4-link"><a href="result_selected/qformer_fresh_lora/RouteScenario_2084_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+        </div>
+      </details>
+      <details class="route-group">
+        <summary>
+          <span class="route-title">
+            <span>Route 24294</span>
+            <small>Aggregate Q-former pedestrian/parking regression candidate.</small>
+          </span>
+          <span class="video-count">2 videos</span>
+        </summary>
+        <div class="variant-chips" aria-label="Available variants">
+          <span>Baseline</span>
+          <span>Q-former fresh-LoRA</span>
+        </div>
+        <div class="video-grid">
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Baseline</h3>
+              <span>13.7 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="result_selected/baseline/RouteScenario_24294_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Detects the pedestrian and stops correctly in the seed-1 render.</p>
+            <p class="mp4-link"><a href="result_selected/baseline/RouteScenario_24294_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Q-former fresh-LoRA</h3>
+              <span>10.5 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="result_selected/qformer_fresh_lora/RouteScenario_24294_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Pedestrian is not clearly visible in the render.</p>
+            <p class="mp4-link"><a href="result_selected/qformer_fresh_lora/RouteScenario_24294_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+        </div>
+      </details>
+      <details class="route-group">
+        <summary>
+          <span class="route-title">
+            <span>Route 28243</span>
+            <small>Aggregate Q-former left-turn enter-flow regression candidate.</small>
+          </span>
+          <span class="video-count">2 videos</span>
+        </summary>
+        <div class="variant-chips" aria-label="Available variants">
+          <span>Baseline</span>
+          <span>Q-former fresh-LoRA</span>
+        </div>
+        <div class="video-grid">
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Baseline</h3>
+              <span>14.2 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="result_selected/baseline/RouteScenario_28243_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">No visible failure observed in the seed-1 render.</p>
+            <p class="mp4-link"><a href="result_selected/baseline/RouteScenario_28243_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Q-former fresh-LoRA</h3>
+              <span>12.6 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="result_selected/qformer_fresh_lora/RouteScenario_28243_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Runs a red light in the seed-1 render.</p>
+            <p class="mp4-link"><a href="result_selected/qformer_fresh_lora/RouteScenario_28243_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+        </div>
+      </details>
+        </div>
+      </div>
+
+      <div class="adapter-block" id="delta-result-selected">
+        <h3>Delta</h3>
+        <p>Baseline versus the fresh-LoRA feature-delta adapter on routes selected from Delta improvements and regressions.</p>
+        <div class="route-list">
+      <details class="route-group featured" open>
+        <summary>
+          <span class="route-title">
+            <span>Route 27532</span>
+            <small>Shared blocked-intersection improvement example.</small>
+          </span>
+          <span class="video-count">2 videos</span>
+        </summary>
+        <div class="variant-chips" aria-label="Available variants">
+          <span>Baseline</span>
+          <span>Delta fresh-LoRA</span>
+        </div>
+        <div class="video-grid">
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Baseline</h3>
+              <span>7.1 MiB</span>
+            </div>
+            <p class="snapshot-tags"><span class="snapshot-tag chapter-6">Chapter 6 snapshot</span></p>
+            <video controls preload="metadata" playsinline>
+              <source src="result_selected/baseline/RouteScenario_27532_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Collides with the vehicle in front.</p>
+            <p class="mp4-link"><a href="result_selected/baseline/RouteScenario_27532_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Delta fresh-LoRA</h3>
+              <span>15.3 MiB</span>
+            </div>
+            <p class="snapshot-tags"><span class="snapshot-tag chapter-6">Chapter 6 snapshot</span></p>
+            <video controls preload="metadata" playsinline>
+              <source src="result_selected/delta_fresh_lora/RouteScenario_27532_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Avoids the baseline collision; the result file records a red-light infraction.</p>
+            <p class="mp4-link"><a href="result_selected/delta_fresh_lora/RouteScenario_27532_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+        </div>
+      </details>
+      <details class="route-group featured">
+        <summary>
+          <span class="route-title">
+            <span>Route 26393</span>
+            <small>Delta improvement example.</small>
+          </span>
+          <span class="video-count">2 videos</span>
+        </summary>
+        <div class="variant-chips" aria-label="Available variants">
+          <span>Baseline</span>
+          <span>Delta fresh-LoRA</span>
+        </div>
+        <div class="video-grid">
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Baseline</h3>
+              <span>6.1 MiB</span>
+            </div>
+            <p class="snapshot-tags"><span class="snapshot-tag chapter-6">Chapter 6 snapshot</span></p>
+            <video controls preload="metadata" playsinline>
+              <source src="result_selected/baseline/RouteScenario_26393_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Receives a scenario-timeout penalty.</p>
+            <p class="mp4-link"><a href="result_selected/baseline/RouteScenario_26393_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Delta fresh-LoRA</h3>
+              <span>5.6 MiB</span>
+            </div>
+            <p class="snapshot-tags"><span class="snapshot-tag chapter-6">Chapter 6 snapshot</span></p>
+            <video controls preload="metadata" playsinline>
+              <source src="result_selected/delta_fresh_lora/RouteScenario_26393_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Completes the route without visible failure in the seed-1 render.</p>
+            <p class="mp4-link"><a href="result_selected/delta_fresh_lora/RouteScenario_26393_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+        </div>
+      </details>
+      <details class="route-group">
+        <summary>
+          <span class="route-title">
+            <span>Route 25383</span>
+            <small>Aggregate Delta parked-obstacle improvement candidate.</small>
+          </span>
+          <span class="video-count">2 videos</span>
+        </summary>
+        <div class="variant-chips" aria-label="Available variants">
+          <span>Baseline</span>
+          <span>Delta fresh-LoRA</span>
+        </div>
+        <div class="video-grid">
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Baseline</h3>
+              <span>5.4 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="result_selected/baseline/RouteScenario_25383_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">No visible failure observed in the seed-1 render.</p>
+            <p class="mp4-link"><a href="result_selected/baseline/RouteScenario_25383_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Delta fresh-LoRA</h3>
+              <span>24.4 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="result_selected/delta_fresh_lora/RouteScenario_25383_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">No visible failure observed in the seed-1 render.</p>
+            <p class="mp4-link"><a href="result_selected/delta_fresh_lora/RouteScenario_25383_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+        </div>
+      </details>
+      <details class="route-group">
+        <summary>
+          <span class="route-title">
+            <span>Route 3464</span>
+            <small>Aggregate Delta door-opening regression candidate; seed-1 render does not show a clear visible failure.</small>
+          </span>
+          <span class="video-count">2 videos</span>
+        </summary>
+        <div class="variant-chips" aria-label="Available variants">
+          <span>Baseline</span>
+          <span>Delta fresh-LoRA</span>
+        </div>
+        <div class="video-grid">
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Baseline</h3>
+              <span>4.4 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="result_selected/baseline/RouteScenario_3464_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">No visible failure observed in the seed-1 render.</p>
+            <p class="mp4-link"><a href="result_selected/baseline/RouteScenario_3464_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Delta fresh-LoRA</h3>
+              <span>34.7 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="result_selected/delta_fresh_lora/RouteScenario_3464_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">No visible failure observed in the seed-1 render.</p>
+            <p class="mp4-link"><a href="result_selected/delta_fresh_lora/RouteScenario_3464_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+        </div>
+      </details>
+      <details class="route-group">
+        <summary>
+          <span class="route-title">
+            <span>Route 27582</span>
+            <small>Aggregate Delta pedestrian-crossing regression candidate.</small>
+          </span>
+          <span class="video-count">2 videos</span>
+        </summary>
+        <div class="variant-chips" aria-label="Available variants">
+          <span>Baseline</span>
+          <span>Delta fresh-LoRA</span>
+        </div>
+        <div class="video-grid">
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Baseline</h3>
+              <span>7.9 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="result_selected/baseline/RouteScenario_27582_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Detects the pedestrian and stops; the result file records a red-light infraction.</p>
+            <p class="mp4-link"><a href="result_selected/baseline/RouteScenario_27582_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Delta fresh-LoRA</h3>
+              <span>8.2 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="result_selected/delta_fresh_lora/RouteScenario_27582_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">No visible failure observed in the seed-1 render.</p>
+            <p class="mp4-link"><a href="result_selected/delta_fresh_lora/RouteScenario_27582_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+        </div>
+      </details>
+      <details class="route-group">
+        <summary>
+          <span class="route-title">
+            <span>Route 26401</span>
+            <small>Aggregate Delta slow-traffic merging regression candidate.</small>
+          </span>
+          <span class="video-count">2 videos</span>
+        </summary>
+        <div class="variant-chips" aria-label="Available variants">
+          <span>Baseline</span>
+          <span>Delta fresh-LoRA</span>
+        </div>
+        <div class="video-grid">
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Baseline</h3>
+              <span>25.9 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="result_selected/baseline/RouteScenario_26401_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">No visible failure observed in the seed-1 render.</p>
+            <p class="mp4-link"><a href="result_selected/baseline/RouteScenario_26401_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+          <article class="video-card">
+            <div class="card-header">
+              <h3>Delta fresh-LoRA</h3>
+              <span>2.3 MiB</span>
+            </div>
+            <video controls preload="metadata" playsinline>
+              <source src="result_selected/delta_fresh_lora/RouteScenario_26401_seed1_rep0.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <p class="observation">Loses control and remains stopped after a point.</p>
+            <p class="mp4-link"><a href="result_selected/delta_fresh_lora/RouteScenario_26401_seed1_rep0.mp4">Open MP4</a></p>
+          </article>
+        </div>
+      </details>
+        </div>
+      </div>
+    </section>
   </main>
+
   <footer>
-    <p>Repository: <a href="https://github.com/hdezerto/simlingo-thesis">hdezerto/simlingo-thesis</a></p>
+    <p>Video files are stored in this repository under <code>thesis/videos/</code>. Use the MP4 links when a browser chooses not to preload a player.</p>
   </footer>
 </body>
 </html>
