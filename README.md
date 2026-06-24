@@ -4,6 +4,10 @@ This repository is the master's thesis fork of SimLingo used for the temporal
 context experiments. The original upstream project README is preserved in
 `README_UPSTREAM.md`.
 
+[![Route 4183 preview: baseline and Q-former](thesis/videos/preview_route4183.gif)](https://hdezerto.github.io/simlingo-thesis/thesis/videos/)
+
+*Route 4183 preview (0:07-0:12): baseline versus Q-former. Click the preview for all supplementary videos.*
+
 ## Thesis Information
 
 | Field | Value |
@@ -15,7 +19,7 @@ context experiments. The original upstream project README is preserved in
 | Institution | KTH Royal Institute of Technology |
 | Department | EECS |
 | Supervisors | Truls Nyberg; Yi Yang; Jesper Ericsson |
-| Host company / cooperation partner | TRATON / Scania |
+| Host company | TRATON / Scania |
 | Examiner | Olov Andersson (EECS) |
 | Keywords | autonomous driving; vision-language-action models; temporal context; closed-loop evaluation; Bench2Drive |
 | Contact | hugoad@kth.se |
