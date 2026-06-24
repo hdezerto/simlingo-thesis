@@ -23,7 +23,7 @@ context experiments. The original upstream project README is preserved in
 | Examiner | Olov Andersson (EECS) |
 | Keywords | autonomous driving; vision-language-action models; temporal context; closed-loop evaluation; Bench2Drive |
 | Contact | hugoad@kth.se |
-| Academic year / term | 2026 |
+| Academic year | 2026 |
 
 ## Branch Strategy
 
